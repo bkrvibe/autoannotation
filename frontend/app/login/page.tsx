@@ -3,16 +3,27 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Loader2, CheckCircle2, Zap, Shield, ArrowRight } from 'lucide-react';
+
+const features = [
+  { icon: CheckCircle2, text: '50M+ annotations processed' },
+  { icon: Zap, text: '10x faster than manual labeling' },
+  { icon: Shield, text: 'Enterprise-grade security' },
+];
 
 export default function LoginPage() {
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('password');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
     
     try {
       const formData = new URLSearchParams();
@@ -30,64 +41,169 @@ export default function LoginPage() {
       router.push('/dashboard');
     } catch (err: any) {
       console.error('Login error:', err);
-      // Construct a better error message
       let msg = 'Invalid credentials or server error.';
-      if (err.response) {
-         // Server responded with a status code other than 2xx
-         msg = `Login Failed: ${err.response.status} - ${JSON.stringify(err.response.data)}`;
+      if (err.response?.data?.detail) {
+        msg = err.response.data.detail;
       } else if (err.message) {
-         // Network error or other
-         msg = `Error: ${err.message}`;
+        msg = err.message;
       }
       setError(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100 dark:bg-zinc-900">
-      <div className="w-full max-w-md space-y-8 rounded-lg bg-white p-6 shadow-md dark:bg-zinc-800">
-        <h2 className="text-center text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-          Sign in
-        </h2>
-        <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-          <div>
-            <label htmlFor="email" className="sr-only">Email address</label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              required
-              className="relative block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 pl-3"
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+    <div className="min-h-screen flex">
+      {/* Left Panel - Branding */}
+      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-violet-950 via-[#0c0a1a] to-[#0a0e1a] overflow-hidden">
+        {/* Grid pattern overlay */}
+        <div 
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}
+        />
+        
+        {/* Gradient orb */}
+        <div className="absolute -top-40 -left-40 w-80 h-80 bg-violet-500/30 rounded-full blur-[120px]" />
+        <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-purple-500/20 rounded-full blur-[120px]" />
+        
+        <div className="relative z-10 flex flex-col justify-between p-12 w-full">
+          {/* Logo */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
+              <span className="text-white font-bold text-lg">C</span>
+            </div>
+            <div>
+              <span className="font-semibold text-white">CaliperAI</span>
+              <span className="text-violet-400 text-sm ml-2">AutoAnn</span>
+            </div>
           </div>
-          <div>
-            <label htmlFor="password" className="sr-only">Password</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              required
-              className="relative block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 pl-3 mt-2"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+          
+          {/* Main content */}
+          <div className="space-y-8">
+            <div>
+              <h1 className="text-4xl font-bold text-white leading-tight">
+                Enterprise Auto-Annotation
+                <br />
+                <span className="text-gradient bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
+                  at Scale
+                </span>
+              </h1>
+              <p className="mt-4 text-lg text-zinc-400 max-w-md">
+                Run production-grade 2D and 3D annotation pipelines. 
+                Upload your data, select a model, and download results.
+              </p>
+            </div>
+            
+            {/* Features */}
+            <div className="space-y-4">
+              {features.map((feature, i) => (
+                <div key={i} className="flex items-center gap-3 text-zinc-300">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+                    <feature.icon className="w-4 h-4 text-violet-400" />
+                  </div>
+                  <span className="text-sm">{feature.text}</span>
+                </div>
+              ))}
+            </div>
           </div>
+          
+          {/* Footer */}
+          <p className="text-sm text-zinc-600">
+            © 2026 Caliper AI Inc. All rights reserved.
+          </p>
+        </div>
+      </div>
+      
+      {/* Right Panel - Login Form */}
+      <div className="flex-1 flex items-center justify-center p-8 bg-background">
+        <div className="w-full max-w-sm space-y-8">
+          {/* Mobile logo */}
+          <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+              <span className="text-white font-bold text-lg">C</span>
+            </div>
+            <span className="font-semibold text-lg">CaliperAI AutoAnn</span>
+          </div>
+          
+          {/* Header */}
+          <div>
+            <h2 className="text-2xl font-semibold text-foreground">Welcome back</h2>
+            <p className="mt-2 text-muted-foreground">
+              Sign in to your account to continue
+            </p>
+          </div>
+          
+          {/* Form */}
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-medium text-foreground">
+                Email address
+              </label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="text-sm font-medium text-foreground">
+                  Password
+                </label>
+                <a href="#" className="text-xs text-primary hover:text-primary/80 transition-colors">
+                  Forgot password?
+                </a>
+              </div>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+            </div>
 
-          {error && <div className="text-red-500 text-sm text-center">{error}</div>}
+            {error && (
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                {error}
+              </div>
+            )}
 
-          <div>
-            <button
-              type="submit"
-              className="group relative flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-            >
-              Sign in
-            </button>
+            <Button type="submit" className="w-full h-11" disabled={loading}>
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  Sign in
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              )}
+            </Button>
+          </form>
+          
+          {/* Demo credentials */}
+          <div className="pt-4 border-t border-border">
+            <p className="text-xs text-muted-foreground mb-2">Demo credentials:</p>
+            <div className="flex gap-2">
+              <code className="flex-1 px-3 py-2 rounded-lg bg-secondary text-xs font-mono text-muted-foreground">
+                admin@example.com
+              </code>
+              <code className="px-3 py-2 rounded-lg bg-secondary text-xs font-mono text-muted-foreground">
+                password
+              </code>
+            </div>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

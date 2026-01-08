@@ -2,7 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { api } from '@/lib/api';
+import { AppLayout } from '@/components/layout';
+import { StatusBadge } from '@/components/common';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { 
+  Briefcase, 
+  CheckCircle2, 
+  XCircle, 
+  Loader2, 
+  Clock,
+  ArrowRight,
+  TrendingUp,
+  Activity,
+  Play
+} from 'lucide-react';
+import { formatRelativeTime, cn } from '@/lib/utils';
 
 interface Job {
   id: number;
@@ -38,112 +55,236 @@ export default function DashboardPage() {
     }
   };
 
+  // Calculate stats
+  const totalJobs = jobs.length;
+  const runningJobs = jobs.filter(j => j.status.toLowerCase() === 'running' || j.status.toLowerCase() === 'queued').length;
+  const successfulJobs = jobs.filter(j => j.status.toLowerCase() === 'success').length;
+  const failedJobs = jobs.filter(j => j.status.toLowerCase() === 'failed').length;
+  const successRate = totalJobs > 0 ? Math.round((successfulJobs / totalJobs) * 100) : 0;
+  
+  const activeJobs = jobs.filter(j => 
+    j.status.toLowerCase() === 'running' || j.status.toLowerCase() === 'queued'
+  ).slice(0, 3);
+  
+  const recentCompleted = jobs.filter(j => 
+    j.status.toLowerCase() === 'success' || j.status.toLowerCase() === 'failed'
+  ).slice(0, 5);
+
+  const stats = [
+    { 
+      label: 'Total Jobs', 
+      value: totalJobs, 
+      subtext: 'All time',
+      icon: Briefcase,
+      color: 'text-violet-400',
+      bgColor: 'bg-violet-500/10',
+    },
+    { 
+      label: 'Running', 
+      value: runningJobs, 
+      subtext: 'In progress',
+      icon: Activity,
+      color: 'text-blue-400',
+      bgColor: 'bg-blue-500/10',
+      pulse: runningJobs > 0,
+    },
+    { 
+      label: 'Completed', 
+      value: successfulJobs, 
+      subtext: `${successRate}% success rate`,
+      icon: CheckCircle2,
+      color: 'text-emerald-400',
+      bgColor: 'bg-emerald-500/10',
+    },
+    { 
+      label: 'Failed', 
+      value: failedJobs, 
+      subtext: 'Need attention',
+      icon: XCircle,
+      color: 'text-red-400',
+      bgColor: 'bg-red-500/10',
+    },
+  ];
+
   if (loading) {
-    return <div className="p-8">Loading...</div>;
+    return (
+      <AppLayout title="Dashboard">
+        <div className="flex items-center justify-center h-[60vh]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading dashboard...</p>
+          </div>
+        </div>
+      </AppLayout>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900">
-      <nav className="bg-white shadow dark:bg-zinc-800">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 justify-between">
-            <div className="flex">
-              <div className="flex flex-shrink-0 items-center">
-                <span className="font-bold text-xl text-indigo-600">AutoAnn</span>
-              </div>
-              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                <a href="#" className="border-indigo-500 text-gray-900 inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium dark:text-white">
-                  Jobs
-                </a>
-                <a href="#" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium dark:text-gray-300">
-                  Pipelines
-                </a>
-              </div>
+    <AppLayout title="Dashboard" description="Monitor your annotation jobs">
+      <div className="space-y-8">
+        {/* Welcome Banner */}
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-violet-600/20 via-purple-600/20 to-fuchsia-600/20 border border-violet-500/20 p-6">
+          <div className="absolute inset-0 bg-grid-white/[0.02]" />
+          <div className="relative flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-foreground">
+                Welcome back, Admin
+              </h2>
+              <p className="mt-1 text-muted-foreground">
+                {runningJobs > 0 
+                  ? `You have ${runningJobs} job${runningJobs > 1 ? 's' : ''} currently running.`
+                  : 'Start a new annotation job to begin processing your data.'
+                }
+              </p>
             </div>
-            <div className="flex items-center">
-              <button
-                onClick={() => {
-                  localStorage.removeItem('token');
-                  router.push('/login');
-                }}
-                className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
-              >
-                Sign out
-              </button>
-            </div>
+            <Link href="/jobs/new">
+              <Button className="shadow-lg shadow-primary/20">
+                <Play className="h-4 w-4 mr-2" />
+                New Job
+              </Button>
+            </Link>
           </div>
         </div>
-      </nav>
 
-      <div className="py-10">
-        <header>
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <h1 className="text-3xl font-bold leading-tight tracking-tight text-gray-900 dark:text-white">
-              Job History
-            </h1>
-          </div>
-        </header>
-        <main>
-          <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
-            <div className="px-4 py-8 sm:px-0">
-              
-              <div className="mb-4 flex justify-end">
-                 <button
-                    onClick={() => router.push('/dashboard/create-job')}
-                    className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-                 >
-                    Create New Job
-                 </button>
-              </div>
-
-              {jobs.length === 0 ? (
-                <div className="rounded-lg border-4 border-dashed border-gray-200 p-12 text-center h-96 dark:border-zinc-700 flex items-center justify-center">
-                   <div>
-                       <p className="text-gray-500 dark:text-gray-400">No jobs found.</p>
-                       <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">Start a new run to see it here.</p>
-                   </div>
+        {/* Stats Grid */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {stats.map((stat) => (
+            <Card key={stat.label} className="relative overflow-hidden">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    <p className="mt-2 text-3xl font-semibold text-foreground">{stat.value}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{stat.subtext}</p>
+                  </div>
+                  <div className={cn("p-2.5 rounded-lg", stat.bgColor)}>
+                    <stat.icon className={cn("h-5 w-5", stat.color, stat.pulse && "animate-pulse")} />
+                  </div>
                 </div>
-              ) : (
-                <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
-                  <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
-                    <thead className="bg-gray-50 dark:bg-zinc-800">
-                      <tr>
-                        <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-6">ID</th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Pipeline</th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Status</th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Input</th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Created At</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white dark:bg-zinc-900 dark:divide-gray-700">
-                      {jobs.map((job) => (
-                        <tr key={job.id}>
-                          <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">{job.id}</td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">{job.pipeline_id}</td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm">
-                            <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
-                              job.status === 'success' ? 'bg-green-50 text-green-700 ring-green-600/20' : 
-                              job.status === 'failed' ? 'bg-red-50 text-red-700 ring-red-600/20' : 
-                              'bg-yellow-50 text-yellow-800 ring-yellow-600/20'
-                            }`}>
-                              {job.status}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-5">
+          {/* Active Jobs - Takes more space */}
+          <div className="lg:col-span-3">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-blue-400" />
+                    Active Jobs
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">Currently processing</p>
+                </div>
+                <Link href="/jobs?status=running">
+                  <Button variant="ghost" size="sm" className="text-muted-foreground">
+                    View all
+                    <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                  </Button>
+                </Link>
+              </CardHeader>
+              <CardContent>
+                {activeJobs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                      <Clock className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-muted-foreground">No active jobs</p>
+                    <p className="text-sm text-muted-foreground/60 mt-1">Start a new job to see it here</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {activeJobs.map((job) => (
+                      <div
+                        key={job.id}
+                        onClick={() => router.push(`/jobs/${job.id}`)}
+                        className="group p-4 rounded-lg border border-border/50 bg-secondary/30 hover:bg-secondary/50 hover:border-border transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <StatusBadge status={job.status} />
+                            <span className="text-sm font-medium text-foreground">
+                              {job.pipeline_id}
                             </span>
-                          </td>
-                           <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300 max-w-xs truncate">{job.input_uri}</td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
-                            {new Date(job.created_at).toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-            </div>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {formatRelativeTime(job.created_at)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs text-muted-foreground font-mono truncate max-w-[300px]">
+                            {job.input_uri}
+                          </code>
+                        </div>
+                        {/* Simulated progress bar */}
+                        <div className="mt-3 h-1.5 rounded-full bg-border overflow-hidden">
+                          <div 
+                            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all duration-1000"
+                            style={{ width: job.status.toLowerCase() === 'running' ? '65%' : '20%' }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
-        </main>
+
+          {/* Recent Completed */}
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-emerald-400" />
+                    Recent
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">Latest completed</p>
+                </div>
+                <Link href="/jobs">
+                  <Button variant="ghost" size="sm" className="text-muted-foreground">
+                    View all
+                    <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                  </Button>
+                </Link>
+              </CardHeader>
+              <CardContent>
+                {recentCompleted.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <p className="text-sm text-muted-foreground">No completed jobs yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {recentCompleted.map((job) => (
+                      <div
+                        key={job.id}
+                        onClick={() => router.push(`/jobs/${job.id}`)}
+                        className="flex items-center justify-between p-3 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={cn(
+                            "w-2 h-2 rounded-full flex-shrink-0",
+                            job.status.toLowerCase() === 'success' ? 'bg-emerald-400' : 'bg-red-400'
+                          )} />
+                          <span className="text-sm font-medium truncate">
+                            {job.pipeline_id}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
+                          {formatRelativeTime(job.created_at)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
-    </div>
+    </AppLayout>
   );
 }

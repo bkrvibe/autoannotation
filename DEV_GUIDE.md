@@ -2,11 +2,77 @@
 
 This document outlines the current state of the Auto-Annotation Orchestrator project, focusing on the scaffolding, authentication, and integration with external services (Airflow & GCS) completed as of January 8, 2026.
 
+---
+
+## ⚠️ Known Issues & Solutions
+
+### Tailwind CSS Not Compiling (Styles Not Applying)
+
+**Symptoms:** 
+- The UI renders as plain unstyled HTML (no colors, no layout, no fonts)
+- When inspecting the CSS file served by Next.js (`/_next/static/css/app/layout.css`), you see raw `@tailwind` directives instead of compiled CSS utilities:
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+**Root Cause:** 
+Next.js 14.1.0 has compatibility issues with ESM (`.mjs`) and TypeScript (`.ts`) configuration files for PostCSS and Tailwind. The PostCSS loader fails to properly process Tailwind directives when using these file formats, resulting in the raw directives being served to the browser instead of compiled CSS.
+
+**Solution:** Convert configuration files to CommonJS (`.js`) format:
+
+1. **Replace `postcss.config.mjs`** with `postcss.config.js`:
+```javascript
+// postcss.config.js
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+```
+
+2. **Replace `tailwind.config.ts`** with `tailwind.config.js`:
+```javascript
+// tailwind.config.js
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  darkMode: ["class"],
+  content: [
+    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+  ],
+  theme: {
+    extend: {
+      // ... your theme configuration
+    },
+  },
+  plugins: [require("tailwindcss-animate")],
+};
+```
+
+3. **Clear the Next.js cache and restart:**
+```bash
+cd frontend
+rm -rf .next node_modules/.cache
+npm run dev
+```
+
+**Verification:** 
+After fixing, the CSS file should contain compiled Tailwind utilities (thousands of lines of actual CSS rules like `.bg-white { background-color: #fff; }`) instead of the raw `@tailwind` directives.
+
+**Date Fixed:** January 9, 2026
+
+---
+
 ## 1. Project Overview
 
 The **Auto-Annotation Orchestrator** is a web platform designed to manage and trigger automated annotation jobs. It serves as a bridge between users and an external Airflow instance.
 
-*   **Frontend**: Next.js 14 (App Router) with Tailwind CSS.
+*   **Frontend**: Next.js 14 (App Router) with Tailwind CSS + **shadcn/ui** component library.
 *   **Backend**: FastAPI (Python 3.10+) with SQLAlchemy & SQLite (MVP).
 *   **Orchestration**: External Apache Airflow (`airflow.caliperai.ai`).
 *   **Storage**: Google Cloud Storage (`data-sets-caliperai`).
@@ -77,6 +143,21 @@ The frontend provides the dashboard for users to login, view pipelines, and crea
 *   **Login Flow**: Frontend sends `username/password` as form-data; Backend validates against mock DB (admin@example.com / password) and returns a Bearer token.
 *   **Axios Interceptor**: `lib/api.ts` automatically attaches the token to subsequent requests.
 
+### UI Components (shadcn/ui)
+*   **Component Library**: shadcn/ui (Radix UI + Tailwind) for consistent, accessible UI.
+*   **Base Components**: Button, Card, Input, Badge, Separator, Avatar, DropdownMenu
+*   **Layout Components**: AppLayout, Sidebar, Navbar with responsive design
+*   **Common Components**: StatsCard, StatusBadge for reusable patterns
+
+### Frontend Routes
+| Route | Description |
+|-------|-------------|
+| `/` | Landing page with feature overview |
+| `/login` | Authentication page |
+| `/dashboard` | Main dashboard with stats and recent jobs |
+| `/jobs` | Full jobs list with filtering and search |
+| `/jobs/new` | Multi-step job creation wizard |
+
 ### Pipeline Integration (Airflow)
 *   **Dynamic Discovery**: 
     - The backend queries the Airflow REST API (`/api/v2/dags`) to fetch available pipelines.
@@ -131,6 +212,8 @@ python scripts/verify_connections.py
 ---
 
 ## 5. Next Steps
+- **Job Detail Page**: Add `/jobs/[id]` page for viewing individual job status, logs, and artifacts.
 - **File Upload**: Implement direct file upload to GCS from the UI instead of manual path entry.
 - **Job Status Polling**: Add a background task or polling mechanism to sync Airflow status (Running -> Success) back to the local DB.
 - **Real DB**: Migrate from SQLite to PostgreSQL for production.
+- **Dark Mode Toggle**: Add user-accessible theme switcher (infrastructure ready in CSS variables).
