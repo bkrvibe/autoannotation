@@ -46,6 +46,19 @@ class GCSService:
         """
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
         return f"{settings.GCS_UPLOAD_PREFIX}/tenants/{tenant_id}/uploads/{timestamp}/{original_filename}"
+
+    def upload_bytes(self, content: bytes, filename: str, content_type: str) -> str:
+        """
+        Upload bytes to GCS and return the gs:// path.
+        Target path: test_data/{timestamp}/{filename}
+        """
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        blob_name = f"test_data/{timestamp}/{filename}"
+        blob = self.bucket.blob(blob_name)
+        
+        blob.upload_from_string(content, content_type=content_type)
+        
+        return f"gs://{settings.GCS_BUCKET}/{blob_name}"
     
     def upload_file(self, local_path: str, gcs_path: Optional[str] = None) -> str:
         """

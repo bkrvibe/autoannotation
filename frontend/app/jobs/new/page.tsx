@@ -277,7 +277,7 @@ export default function NewJobPage() {
                 <div className="mb-6">
                   <h2 className="text-xl font-semibold text-foreground">Input Data Source</h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Specify the location of your data in Google Cloud Storage
+                    Upload data from local computer or provide GCS path
                   </p>
                 </div>
 
@@ -293,24 +293,73 @@ export default function NewJobPage() {
                     </div>
                   </div>
 
-                  {/* GCS Path Input */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">
-                      GCS Input Path
-                    </label>
-                    <div className="relative">
-                      <FolderInput className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                      <Input
-                        placeholder="gs://your-bucket/path/to/data/"
-                        value={inputUri}
-                        onChange={(e) => setInputUri(e.target.value)}
-                        className="pl-12 h-12 text-base font-mono"
-                      />
+                  {/* File Upload / GCS Path Toggle */}
+                   <div className="space-y-4">
+                    <div className="border border-dashed border-border rounded-xl p-6 text-center hover:bg-secondary/20 transition-colors">
+                      <label className="cursor-pointer block">
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={async (e) => {
+                             if (e.target.files && e.target.files[0]) {
+                               const file = e.target.files[0];
+                               try {
+                                 setLoading(true);
+                                 // Call upload API
+                                 const res = await api.utils.upload(file);
+                                 setInputUri(res.gcs_path);
+                               } catch (err) {
+                                 console.error(err);
+                                 setError("Failed to upload file");
+                               } finally {
+                                 setLoading(false);
+                               }
+                             }
+                          }}
+                        />
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                            <FolderInput className="h-6 w-6 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">
+                              {loading ? "Uploading..." : "Click to upload local file"}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Supports folders (zip) or individual files
+                            </p>
+                          </div>
+                        </div>
+                      </label>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Enter the full path to your images, videos, or point cloud data
-                    </p>
+
+                    <div className="relative flex items-center py-2">
+                      <div className="flex-grow border-t border-border"></div>
+                      <span className="flex-shrink-0 mx-4 text-xs text-muted-foreground uppercase">OR</span>
+                      <div className="flex-grow border-t border-border"></div>
+                    </div>
+
+
+                    {/* GCS Path Input */}
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">
+                        GCS Input Path
+                        </label>
+                        <div className="relative">
+                        <FolderInput className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                        <Input
+                            placeholder="gs://your-bucket/path/to/data/"
+                            value={inputUri}
+                            onChange={(e) => setInputUri(e.target.value)}
+                            className="pl-12 h-12 text-base font-mono"
+                        />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                        Enter the full path to your images, videos, or point cloud data
+                        </p>
+                    </div>
                   </div>
+
 
                   {/* Quick Examples */}
                   <div className="pt-4 border-t border-border">

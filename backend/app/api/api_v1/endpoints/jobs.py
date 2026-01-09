@@ -69,5 +69,24 @@ def read_jobs(
     Retrieve jobs.
     """
     jobs = db.query(JobModel).offset(skip).limit(limit).all()
-    # Pydantic conversion handles the mapping
+    
+    # Sync status
+    updates_needed = False
+    for job in jobs:
+        if job.status not in ["success", "failed"]:
+            try:
+                status_info = airflow_service.get_dag_run_status(job.airflow_dag_id, job.airflow_run_id)
+                new_state = status_info.get("state")
+                if new_state and new_state != job.status:
+                     job.status = new_state
+                     db.add(job)
+                     updates_needed = True
+            except Exception:
+                # Log error but don't fail the request
+                pass 
+                
+    if updates_needed:
+        db.commit()
+    
     return jobs
+

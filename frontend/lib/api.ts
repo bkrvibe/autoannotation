@@ -50,5 +50,18 @@ export const api = {
         const response = await axiosInstance.get(`/jobs/${id}`);
         return response.data;
     }
+  },
+  utils: {
+    upload: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await axiosInstance.post('/utils/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data; // { gcs_path: string }
+    }
   }
 };
+
