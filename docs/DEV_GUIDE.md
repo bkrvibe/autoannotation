@@ -156,7 +156,8 @@ The frontend provides the dashboard for users to login, view pipelines, and crea
 | `/login` | Authentication page |
 | `/dashboard` | Main dashboard with stats and recent jobs |
 | `/jobs` | Full jobs list with filtering and search |
-| `/jobs/new` | Multi-step job creation wizard |
+| `/jobs/new` | Multi-step job creation wizard with file upload |
+| `/jobs/[id]` | Job detail page with status, config, and download |
 
 ### Pipeline Integration (Airflow)
 *   **Dynamic Discovery**: 
@@ -173,12 +174,18 @@ The frontend provides the dashboard for users to login, view pipelines, and crea
 ### Job Management
 *   **Creation Wizard**: A multi-step form allows users to:
     1. Select a pipeline (fetched live from Airflow).
-    2. Input a GCS Path (e.g., `gs://data-sets-caliperai/...`).
+    2. Input a GCS Path manually OR upload a file/zip directly.
     3. Review Configuration.
+*   **File Upload**: 
+    - Users can upload files directly from their local machine.
+    - Files are uploaded to `gs://data-sets-caliperai/test_data/{timestamp}_{filename}`.
+    - Progress bar shows upload status.
 *   **Trigger Mechanism**:
     - Backend calls Airflow's `/dagRuns` endpoint.
     - Passes `conf={"gcs_path": "..."}` or `{"gcp_path": "..."}` depending on logic.
 *   **Persistence**: Job details (Run ID, Status, Pipeline ID) are saved to the local SQLite `autoann.db`.
+*   **Status Sync**: Job status is automatically synced from Airflow when viewing job list or details.
+*   **Result Download**: Completed jobs can download annotation results directly from the Airflow worker via SCP.
 
 ---
 
@@ -208,12 +215,62 @@ python scripts/verify_connections.py
 3.  **Missing DAGs**:
     - *Symptom*: Only 1 DAG showing in list.
     - *Fix*: Increased Airflow API page limit from defaults.
+4.  **Job Status Always "Queued"**:
+    - *Symptom*: Jobs remained in "queued" state even after Airflow completed them.
+    - *Fix*: Added status sync in `GET /jobs/` and `GET /jobs/{id}` endpoints that query Airflow's DAG run status API and update the local database.
+5.  **Download Results Fails with Auth Error**:
+    - *Symptom*: `gcloud compute scp` fails with "Reauthentication failed. cannot prompt during non-interactive execution."
+    - *Root Cause*: gcloud credentials expired and the subprocess call cannot prompt for re-authentication.
+    - *Fix*: Run `gcloud auth login --update-adc` in the terminal to refresh credentials. This needs to be done periodically or set up a service account with persistent credentials.
+6.  **XCom Results Not Showing**:
+    - *Symptom*: Completed jobs show "Results not available" even though Airflow task succeeded.
+    - *Root Cause*: Task ID mismatch - the XCom is stored under a specific task ID that may vary between DAGs.
+    - *Fix*: Backend now tries multiple common task IDs (`convert_to_calipergt`, `convert_to_calipergt_task`, `final_task`) when fetching XCom. The XCom endpoint is `/api/v2/dags/{dag_id}/dagRuns/{run_id}/taskInstances/{task_id}/xcomEntries/return_value`.
+7.  **Relative Time Shows "5h ago" for New Jobs**:
+    - *Symptom*: Jobs created moments ago showed incorrect relative time like "5 hours ago".
+    - *Root Cause*: Server stores timestamps in UTC but frontend was comparing against local time without timezone conversion.
+    - *Fix*: Updated `formatRelativeTime()` in `frontend/lib/utils.ts` to detect and handle UTC timestamps properly.
 
 ---
 
 ## 5. Next Steps
-- **Job Detail Page**: Add `/jobs/[id]` page for viewing individual job status, logs, and artifacts.
-- **File Upload**: Implement direct file upload to GCS from the UI instead of manual path entry.
-- **Job Status Polling**: Add a background task or polling mechanism to sync Airflow status (Running -> Success) back to the local DB.
+- ~~**Job Detail Page**: Add `/jobs/[id]` page for viewing individual job status, logs, and artifacts.~~ ✅ Completed
+- ~~**File Upload**: Implement direct file upload to GCS from the UI instead of manual path entry.~~ ✅ Completed
+- ~~**Job Status Polling**: Add a background task or polling mechanism to sync Airflow status.~~ ✅ Completed (sync on page load)
 - **Real DB**: Migrate from SQLite to PostgreSQL for production.
 - **Dark Mode Toggle**: Add user-accessible theme switcher (infrastructure ready in CSS variables).
+- **Service Account for SCP**: Set up a GCP service account to avoid gcloud auth expiration issues.
+- **Background Status Sync**: Add periodic background polling instead of only syncing on page load.
+
+---
+
+## 6. Architecture Notes
+
+### Download Flow (Annotation Results)
+The annotation results are stored on the Airflow worker VM, not in GCS. The download flow is:
+
+1. **Frontend** calls `POST /jobs/{id}/download`
+2. **Backend** fetches XCom from Airflow API to get the file path:
+   - Endpoint: `/api/v2/dags/{dag_id}/dagRuns/{run_id}/taskInstances/{task_id}/xcomEntries/return_value`
+   - Returns: `{calipergt_file: "/mnt/auto_annotation/output_data/.../annotations.json", ...}`
+3. **Backend** uses `gcloud compute scp` to copy the file from the Airflow worker:
+   ```bash
+   gcloud compute scp --zone=us-central1-b \
+     administrator@caliper-autoanno-ubuntu224:/path/to/annotations.json \
+     /tmp/local_file.json
+   ```
+4. **Backend** returns the file content as a download response
+
+### Key Configuration
+```python
+# SSH config for Airflow worker (in jobs.py)
+AIRFLOW_SSH_HOST = "caliper-autoanno-ubuntu224"
+AIRFLOW_SSH_USER = "administrator"
+AIRFLOW_SSH_ZONE = "us-central1-b"
+```
+
+### File Upload Flow
+1. **Frontend** uploads file via `POST /utils/upload` with multipart form data
+2. **Backend** generates timestamped path: `gs://data-sets-caliperai/test_data/{timestamp}_{filename}`
+3. **Backend** uploads to GCS and returns the path
+4. **Frontend** uses this path when triggering the DAG
