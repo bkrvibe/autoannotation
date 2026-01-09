@@ -16,8 +16,16 @@ export function formatDate(date: string | Date): string {
 }
 
 export function formatRelativeTime(date: string | Date): string {
+  if (!date) return '';
   const now = new Date();
-  const then = new Date(date);
+  let then = new Date(date);
+  
+  // Heuristic: If date string is ISO like '2023-01-01T12:00:00.000000' without Z, 
+  // and we suspect it's UTC, we should treat it as such.
+  if (typeof date === 'string' && !date.endsWith('Z') && !date.includes('+')) {
+      then = new Date(date + 'Z');
+  }
+  
   const diffMs = now.getTime() - then.getTime();
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMins / 60);

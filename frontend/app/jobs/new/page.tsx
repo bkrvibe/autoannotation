@@ -23,6 +23,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Progress } from "@/components/ui/progress"
+
 
 interface Pipeline {
   id: string;
@@ -62,8 +64,10 @@ export default function NewJobPage() {
   const [loading, setLoading] = useState(false);
   const [pipelinesLoading, setPipelinesLoading] = useState(true);
   const [error, setError] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
+
     const token = localStorage.getItem('token');
     if (!token) {
       router.push('/login');
@@ -305,8 +309,11 @@ export default function NewJobPage() {
                                const file = e.target.files[0];
                                try {
                                  setLoading(true);
+                                 setUploadProgress(0);
                                  // Call upload API
-                                 const res = await api.utils.upload(file);
+                                 const res = await api.utils.upload(file, (progress) => {
+                                    setUploadProgress(progress);
+                                 });
                                  setInputUri(res.gcs_path);
                                } catch (err) {
                                  console.error(err);
@@ -323,11 +330,20 @@ export default function NewJobPage() {
                           </div>
                           <div>
                             <p className="text-sm font-medium text-foreground">
-                              {loading ? "Uploading..." : "Click to upload local file"}
+                              {loading ? (
+                                <span className="flex items-center gap-2">
+                                    Uploading... {uploadProgress}%
+                                </span>
+                              ) : "Click to upload local file"}
                             </p>
                             <p className="text-xs text-muted-foreground mt-1">
                               Supports folders (zip) or individual files
                             </p>
+                            {loading && (
+                                <div className="w-[200px] mt-2">
+                                    <Progress value={uploadProgress} className="h-2" />
+                                </div>
+                            )}
                           </div>
                         </div>
                       </label>

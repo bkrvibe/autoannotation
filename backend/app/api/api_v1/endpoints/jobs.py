@@ -58,6 +58,51 @@ def create_job(
     db.refresh(db_job)
     return db_job
 
+@router.get("/{job_id}", response_model=Job)
+def read_job(
+    job_id: int,
+    db: Session = Depends(deps.get_db),
+):
+    """
+    Get a specific job by ID, syncing status from Airflow.
+    """
+    job = db.query(JobModel).filter(JobModel.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Sync status from Airflow if not terminal
+    if job.status not in ["success", "failed"]:
+        try:
+            status_info = airflow_service.get_dag_run_status(job.airflow_dag_id, job.airflow_run_id)
+            new_state = status_info.get("state")
+            if new_state and new_state != job.status:
+                job.status = new_state
+                db.add(job)
+                db.commit()
+                db.refresh(job)
+        except Exception:
+            pass
+    
+    # If job is successful, try to fetch XCom result
+    if job.status == "success" and not job.result_artifacts:
+        try:
+            xcom_result = airflow_service.get_xcom_value(
+                job.airflow_dag_id,
+                job.airflow_run_id,
+                "convert_to_calipergt",
+                "return_value"
+            )
+            if xcom_result:
+                job.result_artifacts = xcom_result
+                db.add(job)
+                db.commit()
+                db.refresh(job)
+        except Exception:
+            pass
+    
+    return job
+
+
 @router.get("/", response_model=List[Job])
 def read_jobs(
     db: Session = Depends(deps.get_db),
@@ -68,7 +113,7 @@ def read_jobs(
     """
     Retrieve jobs.
     """
-    jobs = db.query(JobModel).offset(skip).limit(limit).all()
+    jobs = db.query(JobModel).order_by(JobModel.created_at.desc()).offset(skip).limit(limit).all()
     
     # Sync status
     updates_needed = False

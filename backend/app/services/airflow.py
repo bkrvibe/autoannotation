@@ -103,3 +103,51 @@ class AirflowService:
             "start_date": data.get("start_date"),
             "end_date": data.get("end_date")
         }
+
+    def get_xcom_value(
+        self,
+        dag_id: str,
+        dag_run_id: str,
+        task_id: str,
+        xcom_key: str = "return_value"
+    ) -> Any:
+        """
+        Get XCom value from a task.
+        
+        Args:
+            dag_id: The DAG ID
+            dag_run_id: The DAG run ID
+            task_id: The task ID
+            xcom_key: The XCom key (default: return_value)
+            
+        Returns:
+            The XCom value
+        """
+        endpoint = f"/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{task_id}/xcomEntries/{xcom_key}"
+        response = self._make_request("GET", endpoint)
+        
+        if response.status_code != 200:
+            return None
+        
+        data = response.json()
+        return data.get("value")
+
+    def get_task_instances(self, dag_id: str, dag_run_id: str) -> list:
+        """
+        Get all task instances for a DAG run.
+        
+        Args:
+            dag_id: The DAG ID
+            dag_run_id: The DAG run ID
+            
+        Returns:
+            List of task instance dictionaries
+        """
+        endpoint = f"/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances"
+        response = self._make_request("GET", endpoint)
+        
+        if response.status_code != 200:
+            return []
+        
+        data = response.json()
+        return data.get("task_instances", [])
