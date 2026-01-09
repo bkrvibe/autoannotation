@@ -49,6 +49,20 @@ export const api = {
     get: async (id: string) => {
         const response = await axiosInstance.get(`/jobs/${id}`);
         return response.data;
+    },
+    fetchXcom: async (id: string, taskId: string = 'convert_to_calipergt') => {
+        const response = await axiosInstance.get(`/jobs/${id}/xcom?task_id=${taskId}`);
+        return response.data;
+    },
+    getTasks: async (id: string) => {
+        const response = await axiosInstance.get(`/jobs/${id}/tasks`);
+        return response.data;
+    },
+    downloadArtifact: async (id: string) => {
+        const response = await axiosInstance.post(`/jobs/${id}/download`, null, {
+            responseType: 'blob'
+        });
+        return response;
     }
   },
   utils: {

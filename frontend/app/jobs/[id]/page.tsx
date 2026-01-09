@@ -12,17 +12,15 @@ import {
   Calendar,
   Clock,
   HardDrive,
-  FileCode,
   Download,
-  ExternalLink,
   Activity,
   Box,
   CheckCircle2,
-  XCircle,
   AlertCircle,
   RefreshCw,
   FileText,
-  Layers
+  Layers,
+  Loader2
 } from 'lucide-react';
 import { cn, formatRelativeTime } from '@/lib/utils';
 
@@ -34,6 +32,7 @@ export default function JobDetailPage() {
   const [job, setJob] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -63,20 +62,40 @@ export default function JobDetailPage() {
     fetchJob();
   };
 
-  const handleDownload = () => {
-    if (job.result_artifacts) {
-      const artifacts = job.result_artifacts;
-      // Check if calipergt_file path exists
-      if (artifacts.calipergt_file) {
-        // The file is on the Airflow worker, show the path info
-        alert(`Annotation file location:\n${artifacts.calipergt_file}\n\nThis file is on the Airflow worker. Check if it's been uploaded to GCS.`);
-      } else if (artifacts.download_url) {
-        window.open(artifacts.download_url, '_blank');
-      } else {
-        alert("Output file path available in result artifacts. See details below.");
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const response = await api.jobs.downloadArtifact(jobId);
+      
+      // Refresh job to get any updated artifacts
+      await fetchJob();
+      
+      // Create download link from blob
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = 'annotations.json';
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename=(.+)/);
+        if (match) {
+          filename = match[1];
+        }
       }
-    } else {
-      alert("No result artifacts available yet. Try refreshing.");
+      
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('Download failed:', err);
+      alert(err.response?.data?.detail || 'Failed to download file. The file may not exist on the worker.');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -124,9 +143,17 @@ export default function JobDetailPage() {
               <RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />
               Refresh
             </Button>
-            <Button variant="outline" disabled={job.status !== 'success'} onClick={handleDownload}>
-              <Download className="mr-2 h-4 w-4" />
-              Download Results
+            <Button 
+              variant="default"
+              disabled={job.status !== 'success' || downloading} 
+              onClick={handleDownload}
+            >
+              {downloading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              {downloading ? 'Downloading...' : 'Download Results'}
             </Button>
           </div>
         </div>
@@ -261,6 +288,20 @@ export default function JobDetailPage() {
                   </pre>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        )}
+        
+        {/* Show message when job succeeded but no artifacts found yet */}
+        {job.status === 'success' && !artifacts && (
+          <Card className="border-amber-500/30 bg-amber-500/5">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-amber-500" />
+                <p className="text-sm text-muted-foreground">
+                  Results not yet available. Click <strong>Download Results</strong> to fetch and download the annotation file.
+                </p>
+              </div>
             </CardContent>
           </Card>
         )}
