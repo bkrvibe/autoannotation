@@ -2,21 +2,87 @@ import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
+// CSRF token storage (in-memory, set after login)
+let csrfToken: string | null = null;
+
+export const setCsrfToken = (token: string) => {
+  csrfToken = token;
+};
+
+export const getCsrfToken = () => csrfToken;
+
+export const clearCsrfToken = () => {
+  csrfToken = null;
+};
+
 const axiosInstance = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Send HttpOnly cookies with requests
 });
 
-// Add a request interceptor to include the auth token
+// Add CSRF token to mutating requests
 axiosInstance.interceptors.request.use((config) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  // Add CSRF token to state-changing methods
+  if (csrfToken && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(config.method?.toUpperCase() || '')) {
+    config.headers['X-CSRF-Token'] = csrfToken;
   }
   return config;
 });
+
+// Handle 401 responses (session expired)
+axiosInstance.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear CSRF token and redirect to login
+      clearCsrfToken();
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Auth response types
+export interface AuthResponse {
+  csrf_token: string;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+  };
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+}
+
+export interface MeResponse {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+  };
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  tenants: Array<{
+    tenant_id: string;
+    tenant_name: string;
+    tenant_slug: string;
+    role_in_tenant: string;
+    is_default: boolean;
+  }>;
+}
 
 // Hybrid API object to support both legacy direct calls (like Login) and domain methods
 export const api = {
@@ -25,6 +91,53 @@ export const api = {
   post: axiosInstance.post.bind(axiosInstance),
   put: axiosInstance.put.bind(axiosInstance),
   delete: axiosInstance.delete.bind(axiosInstance),
+
+  // Auth methods
+  auth: {
+    login: async (email: string, password: string): Promise<AuthResponse> => {
+      const response = await axiosInstance.post('/auth/login', { email, password });
+      setCsrfToken(response.data.csrf_token);
+      return response.data;
+    },
+    logout: async (): Promise<void> => {
+      try {
+        await axiosInstance.post('/auth/logout');
+      } finally {
+        clearCsrfToken();
+      }
+    },
+    me: async (): Promise<MeResponse> => {
+      const response = await axiosInstance.get('/auth/me');
+      return response.data;
+    },
+    requestMagicLink: async (email: string): Promise<{ message: string }> => {
+      const response = await axiosInstance.post('/auth/magic-link', { email });
+      return response.data;
+    },
+    verifyMagicLink: async (token: string): Promise<AuthResponse> => {
+      const response = await axiosInstance.post('/auth/magic-link/verify', { token });
+      setCsrfToken(response.data.csrf_token);
+      return response.data;
+    },
+    acceptInvite: async (token: string, password: string, name: string): Promise<AuthResponse> => {
+      const response = await axiosInstance.post('/auth/accept-invite', { token, password, name });
+      setCsrfToken(response.data.csrf_token);
+      return response.data;
+    },
+    forgotPassword: async (email: string): Promise<{ message: string }> => {
+      const response = await axiosInstance.post('/auth/forgot-password', { email });
+      return response.data;
+    },
+    resetPassword: async (token: string, new_password: string): Promise<{ message: string }> => {
+      const response = await axiosInstance.post('/auth/reset-password', { token, new_password });
+      return response.data;
+    },
+    switchTenant: async (tenant_id: string): Promise<AuthResponse> => {
+      const response = await axiosInstance.post('/auth/switch-tenant', { tenant_id });
+      setCsrfToken(response.data.csrf_token);
+      return response.data;
+    },
+  },
 
   // Domain specific methods
   pipelines: {

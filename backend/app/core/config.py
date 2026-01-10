@@ -1,14 +1,27 @@
-from typing import List, Union
+from typing import List, Union, Optional
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str
+    PROJECT_NAME: str = "Auto-Annotation Orchestrator"
     API_V1_STR: str = "/api/v1"
     
+    # Security
     SECRET_KEY: str
+    CSRF_SECRET_KEY: Optional[str] = None  # For CSRF token signing (defaults to SECRET_KEY if not set)
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     ALGORITHM: str = "HS256"
+    
+    # Session settings
+    SESSION_COOKIE_NAME: str = "autoann_session"
+    SESSION_EXPIRE_MINUTES: int = 1440  # 24 hours sliding expiration
+    SESSION_ABSOLUTE_EXPIRE_DAYS: int = 7  # Hard limit
+    MAGIC_LINK_EXPIRE_MINUTES: int = 15
+    INVITE_EXPIRE_HOURS: int = 48
+    PASSWORD_RESET_EXPIRE_HOURS: int = 1
+    
+    # Frontend URL for email links
+    FRONTEND_URL: str = "http://localhost:3000"
     
     # CORS
     BACKEND_CORS_ORIGINS: Union[List[AnyHttpUrl], str] = []
@@ -30,16 +43,27 @@ class Settings(BaseSettings):
 
     # Airflow
     AIRFLOW_BASE_URL: str = "https://airflow.caliperai.ai"
-    AIRFLOW_TOKEN: str = None
+    AIRFLOW_TOKEN: Optional[str] = None  # Fallback token for tenants without dedicated token
     
     # Cloud Storage
     GCS_BUCKET: str = "data-sets-caliperai"
     GCS_UPLOAD_PREFIX: str = "test_data"
-    GOOGLE_APPLICATION_CREDENTIALS: str = None
+    GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
+    GCP_PROJECT_ID: Optional[str] = None  # For Secret Manager (per-tenant Airflow tokens)
 
-    # OIDC
-    GOOGLE_CLIENT_ID: str = None
-    GOOGLE_CLIENT_SECRET: str = None
+    # OIDC (future)
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    
+    # Email (SendGrid)
+    SENDGRID_API_KEY: Optional[str] = None
+    SENDGRID_FROM_EMAIL: str = "noreply@caliperai.ai"
+    SENDGRID_FROM_NAME: str = "CaliperAI Auto-Annotation"
+    
+    # Rate Limiting
+    RATE_LIMIT_LOGIN_PER_MINUTE: int = 5
+    RATE_LIMIT_MAGIC_LINK_PER_MINUTE: int = 3
+    RATE_LIMIT_GLOBAL_PER_MINUTE: int = 100
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 

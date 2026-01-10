@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useRequireAuth } from '@/lib/auth-context';
 import { AppLayout } from '@/components/layout';
 import { StatusBadge } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -28,6 +29,7 @@ export default function JobDetailPage() {
   const router = useRouter();
   const params = useParams();
   const jobId = params.id as string;
+  const { isAuthenticated, loading: authLoading } = useRequireAuth();
   
   const [job, setJob] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -36,13 +38,10 @@ export default function JobDetailPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/login');
-    } else {
+    if (isAuthenticated) {
       fetchJob();
     }
-  }, [jobId]);
+  }, [jobId, isAuthenticated]);
 
   const fetchJob = async () => {
     try {
@@ -61,6 +60,15 @@ export default function JobDetailPage() {
     setRefreshing(true);
     fetchJob();
   };
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   const handleDownload = async () => {
     setDownloading(true);

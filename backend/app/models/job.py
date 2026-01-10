@@ -1,10 +1,12 @@
-from sqlalchemy import Column, Integer, String, DateTime, JSON, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, JSON, Boolean, ForeignKey
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from app.db.base_class import Base
+from app.db.types import GUID
 
 class Job(Base):
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(String, index=True, default="default")
+    tenant_id = Column(GUID(), ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False)
     
     pipeline_id = Column(String, index=True)
     airflow_dag_id = Column(String)
@@ -18,3 +20,6 @@ class Job(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    tenant = relationship("Tenant", back_populates="jobs")

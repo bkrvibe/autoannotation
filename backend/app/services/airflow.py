@@ -1,9 +1,16 @@
 import time
+import logging
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from enum import Enum
 import requests
 from app.core.config import settings
+
+if TYPE_CHECKING:
+    from app.models.tenant import Tenant
+
+logger = logging.getLogger(__name__)
+
 
 class DAGRunState(Enum):
     """Possible states of a DAG run."""
@@ -13,13 +20,63 @@ class DAGRunState(Enum):
     FAILED = "failed"
     UNKNOWN = "unknown"
 
+
+def get_tenant_airflow_token(tenant: "Tenant") -> Optional[str]:
+    """
+    Retrieve Airflow token for a tenant from GCP Secret Manager.
+    Falls back to default token if not available.
+    """
+    if not tenant.airflow_token_secret_id:
+        return None
+    
+    try:
+        from google.cloud import secretmanager
+        
+        project_id = settings.GCP_PROJECT_ID
+        if not project_id:
+            logger.warning("GCP_PROJECT_ID not configured")
+            return None
+        
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{project_id}/secrets/{tenant.airflow_token_secret_id}/versions/latest"
+        
+        response = client.access_secret_version(request={"name": name})
+        return response.payload.data.decode("UTF-8")
+        
+    except ImportError:
+        logger.warning("google-cloud-secret-manager not installed")
+        return None
+    except Exception as e:
+        logger.error(f"Error retrieving tenant Airflow token: {e}")
+        return None
+
+
+def get_airflow_service_for_tenant(tenant: "Tenant") -> "AirflowService":
+    """
+    Get an AirflowService configured for a specific tenant.
+    Uses tenant's dedicated token if available, otherwise falls back to default.
+    """
+    token = get_tenant_airflow_token(tenant)
+    
+    if token:
+        return AirflowService(token=token)
+    else:
+        # Fall back to default token
+        return AirflowService()
+
+
 class AirflowService:
     """Service for interacting with Airflow REST API."""
     
-    def __init__(self):
-        """Initialize the Airflow service."""
+    def __init__(self, token: Optional[str] = None):
+        """
+        Initialize the Airflow service.
+        
+        Args:
+            token: Optional Airflow API token. If not provided, uses default from settings.
+        """
         self.base_url = settings.AIRFLOW_BASE_URL.rstrip("/")
-        self.token = settings.AIRFLOW_TOKEN
+        self.token = token or settings.AIRFLOW_TOKEN
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json"

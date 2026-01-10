@@ -4,39 +4,81 @@ from sqlalchemy.orm import Session
 from app.api import deps
 from app.schemas.job import Job, JobCreate
 from app.models.job import Job as JobModel
-from app.schemas.user import User
-from app.services.airflow import AirflowService
+from app.models.tenant import Tenant
+from app.services.airflow import AirflowService, get_airflow_service_for_tenant
+from app.core.config import settings
 import subprocess
 import tempfile
 import os
 
 router = APIRouter()
-airflow_service = AirflowService()
 
 # SSH config for Airflow worker
 AIRFLOW_SSH_HOST = "caliper-autoanno-ubuntu224"
 AIRFLOW_SSH_USER = "administrator"
 AIRFLOW_SSH_ZONE = "us-central1-b"
 
+
+def validate_gcs_path_for_tenant(gcs_path: str, tenant: Tenant) -> bool:
+    """
+    Validate that a GCS path belongs to the tenant.
+    Enforces tenant isolation at the path level.
+    """
+    if not gcs_path:
+        return False
+    
+    # Expected pattern: gs://bucket/tenants/{tenant_id_or_slug}/...
+    # or: gs://bucket/{prefix}/tenants/{tenant_id_or_slug}/...
+    
+    expected_patterns = [
+        f"tenants/{tenant.id}/",
+        f"tenants/{tenant.slug}/",
+    ]
+    
+    # Also allow the configured prefix
+    if tenant.gcs_path_prefix:
+        expected_patterns.append(f"{tenant.gcs_path_prefix}/")
+    
+    # Check if path contains any valid tenant pattern
+    for pattern in expected_patterns:
+        if pattern in gcs_path:
+            return True
+    
+    # For backward compatibility, allow "default" tenant to access any path
+    if tenant.slug == "default":
+        return True
+    
+    return False
+
+
 @router.post("/", response_model=Job)
 def create_job(
     job_in: JobCreate,
     db: Session = Depends(deps.get_db),
-    # current_user: User = Depends(deps.get_current_user), # Skipping user check for speed if auth token is stale
+    current_user: deps.CurrentUser = Depends(deps.get_current_active_user),
 ):
     """
     Create a new annotation job and trigger Airflow.
     """
-    # 1. Trigger Airflow directly (Validation happens via Airflow response)
+    # Validate GCS path belongs to tenant
+    if not validate_gcs_path_for_tenant(job_in.input_uri, current_user.tenant):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied: input_uri must be within your tenant's storage path"
+        )
+    
+    # Get Airflow service for this tenant
+    airflow_service = get_airflow_service_for_tenant(current_user.tenant)
+    
     dag_id = job_in.pipeline_id
     
     try:
-        # Defaults
+        # Build config with tenant_id for isolation
         final_conf = job_in.overrides or {}
+        final_conf["tenant_id"] = str(current_user.tenant_id)
         
         # Determine strict GCS/GCP path key logic based on pipeline tags or ID if needed
-        # For now, simplistic check:
-        use_gcp_path = False # Most new DAGs use gcs_path
+        use_gcp_path = False  # Most new DAGs use gcs_path
         
         run_info = airflow_service.trigger_dag(
             dag_id=dag_id,
@@ -46,14 +88,13 @@ def create_job(
         )
     except Exception as e:
         print(f"Airflow Error: {e}")
-        # Return 404 if DAG not found (likely) or 500 for other errors
         if "404" in str(e):
-             raise HTTPException(status_code=404, detail=f"Pipeline '{dag_id}' not found in Airflow")
+            raise HTTPException(status_code=404, detail=f"Pipeline '{dag_id}' not found in Airflow")
         raise HTTPException(status_code=500, detail=f"Failed to trigger Airflow: {str(e)}")
 
-    # 2. Save to DB
+    # Save to DB with proper tenant_id
     db_job = JobModel(
-        tenant_id="default", # current_user.tenant_id
+        tenant_id=current_user.tenant_id,
         pipeline_id=dag_id,
         airflow_dag_id=dag_id,
         airflow_run_id=run_info["dag_run_id"],
@@ -66,17 +107,27 @@ def create_job(
     db.refresh(db_job)
     return db_job
 
+
 @router.get("/{job_id}", response_model=Job)
 def read_job(
     job_id: int,
     db: Session = Depends(deps.get_db),
+    current_user: deps.CurrentUser = Depends(deps.get_current_active_user),
 ):
     """
     Get a specific job by ID, syncing status from Airflow.
     """
-    job = db.query(JobModel).filter(JobModel.id == job_id).first()
+    # Query with tenant isolation
+    job = db.query(JobModel).filter(
+        JobModel.id == job_id,
+        JobModel.tenant_id == current_user.tenant_id
+    ).first()
+    
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Get Airflow service for this tenant
+    airflow_service = get_airflow_service_for_tenant(current_user.tenant)
     
     # Sync status from Airflow if not terminal
     if job.status not in ["success", "failed"]:
@@ -113,8 +164,6 @@ def read_job(
                 print(f"Error fetching XCom from {task_id}: {e}")
     
     return job
-    
-    return job
 
 
 @router.get("/", response_model=List[Job])
@@ -122,12 +171,18 @@ def read_jobs(
     db: Session = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
-    # current_user: User = Depends(deps.get_current_user),
+    current_user: deps.CurrentUser = Depends(deps.get_current_active_user),
 ):
     """
-    Retrieve jobs.
+    Retrieve jobs for current tenant.
     """
-    jobs = db.query(JobModel).order_by(JobModel.created_at.desc()).offset(skip).limit(limit).all()
+    # Query with tenant isolation
+    jobs = db.query(JobModel).filter(
+        JobModel.tenant_id == current_user.tenant_id
+    ).order_by(JobModel.created_at.desc()).offset(skip).limit(limit).all()
+    
+    # Get Airflow service for this tenant
+    airflow_service = get_airflow_service_for_tenant(current_user.tenant)
     
     # Sync status
     updates_needed = False
@@ -137,12 +192,11 @@ def read_jobs(
                 status_info = airflow_service.get_dag_run_status(job.airflow_dag_id, job.airflow_run_id)
                 new_state = status_info.get("state")
                 if new_state and new_state != job.status:
-                     job.status = new_state
-                     db.add(job)
-                     updates_needed = True
+                    job.status = new_state
+                    db.add(job)
+                    updates_needed = True
             except Exception:
-                # Log error but don't fail the request
-                pass 
+                pass
                 
     if updates_needed:
         db.commit()
@@ -155,13 +209,19 @@ def get_job_xcom(
     job_id: int,
     task_id: str = "convert_to_calipergt",
     db: Session = Depends(deps.get_db),
+    current_user: deps.CurrentUser = Depends(deps.get_current_active_user),
 ):
     """
     Fetch XCom value for a job from Airflow.
     """
-    job = db.query(JobModel).filter(JobModel.id == job_id).first()
+    job = db.query(JobModel).filter(
+        JobModel.id == job_id,
+        JobModel.tenant_id == current_user.tenant_id
+    ).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    
+    airflow_service = get_airflow_service_for_tenant(current_user.tenant)
     
     try:
         xcom_result = airflow_service.get_xcom_value(
@@ -186,13 +246,19 @@ def get_job_xcom(
 def get_job_tasks(
     job_id: int,
     db: Session = Depends(deps.get_db),
+    current_user: deps.CurrentUser = Depends(deps.get_current_active_user),
 ):
     """
     Get all task instances for a job's DAG run.
     """
-    job = db.query(JobModel).filter(JobModel.id == job_id).first()
+    job = db.query(JobModel).filter(
+        JobModel.id == job_id,
+        JobModel.tenant_id == current_user.tenant_id
+    ).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    
+    airflow_service = get_airflow_service_for_tenant(current_user.tenant)
     
     try:
         tasks = airflow_service.get_task_instances(job.airflow_dag_id, job.airflow_run_id)
@@ -205,17 +271,23 @@ def get_job_tasks(
 def download_result_file(
     job_id: int,
     db: Session = Depends(deps.get_db),
+    current_user: deps.CurrentUser = Depends(deps.get_current_active_user),
 ):
     """
     Download the annotation result file from the Airflow worker via SCP.
     Automatically fetches XCom if not already available.
     """
-    job = db.query(JobModel).filter(JobModel.id == job_id).first()
+    job = db.query(JobModel).filter(
+        JobModel.id == job_id,
+        JobModel.tenant_id == current_user.tenant_id
+    ).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
     if job.status != "success":
         raise HTTPException(status_code=400, detail=f"Job is not complete (status: {job.status})")
+    
+    airflow_service = get_airflow_service_for_tenant(current_user.tenant)
     
     # If no artifacts, try to fetch XCom first
     if not job.result_artifacts:

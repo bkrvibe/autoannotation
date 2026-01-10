@@ -274,3 +274,228 @@ AIRFLOW_SSH_ZONE = "us-central1-b"
 2. **Backend** generates timestamped path: `gs://data-sets-caliperai/test_data/{timestamp}_{filename}`
 3. **Backend** uploads to GCS and returns the path
 4. **Frontend** uses this path when triggering the DAG
+
+---
+
+## 7. User Authentication & Multi-Tenant System
+
+**Implemented: January 11, 2026**
+
+A complete session-based authentication system with multi-tenant support was implemented to replace the basic JWT auth.
+
+### Authentication Architecture
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| **Session Storage** | SQLite/PostgreSQL | Server-side session with sliding expiration |
+| **Session Cookie** | HttpOnly, Secure, SameSite=Lax | Prevents XSS, sent automatically with requests |
+| **CSRF Protection** | Double-submit token pattern | Prevents cross-site request forgery |
+| **Password Hashing** | bcrypt via passlib | Industry-standard secure password storage |
+| **Rate Limiting** | In-memory (Redis-ready) | Brute-force protection |
+
+### Database Models (Multi-Tenant)
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Tenant    │────<│ UserTenant  │>────│    User     │
+│             │     │  (M:M join) │     │             │
+│ - id        │     │ - role      │     │ - id        │
+│ - name      │     │ - is_default│     │ - email     │
+│ - settings  │     │             │     │ - password  │
+│ - tokens    │     └─────────────┘     │ - status    │
+└─────────────┘                         └─────────────┘
+       │
+       ├──────────────────┐
+       │                  │
+┌──────▼──────┐    ┌──────▼──────┐
+│   Session   │    │   Invite    │
+│             │    │             │
+│ - token_hash│    │ - email     │
+│ - expires_at│    │ - role      │
+│ - csrf_token│    │ - token_hash│
+└─────────────┘    └─────────────┘
+```
+
+### Auth Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/auth/login` | POST | Email/password login, sets session cookie |
+| `/auth/logout` | POST | Clears session cookie and invalidates session |
+| `/auth/me` | GET | Get current user info (validates session) |
+| `/auth/csrf` | GET | Get CSRF token for forms |
+| `/auth/magic-link/request` | POST | Request passwordless login link |
+| `/auth/magic-link/verify` | GET | Verify and login via magic link |
+| `/auth/invite/info` | GET | Get invite details before registration |
+| `/auth/invite/accept` | POST | Register via invite link |
+| `/auth/password/request-reset` | POST | Request password reset email |
+| `/auth/password/reset` | POST | Reset password with token |
+| `/auth/password/change` | POST | Change password (authenticated) |
+
+### Ops Admin Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/ops/tenants` | GET/POST | List/create tenants |
+| `/ops/tenants/{id}/users` | GET | List users in tenant |
+| `/ops/tenants/{id}/invite` | POST | Send invites to emails |
+| `/ops/users` | GET | List all users (ops only) |
+| `/ops/users/{id}/status` | PUT | Activate/deactivate user |
+
+### Environment Variables (Auth)
+
+Add these to `backend/.env`:
+
+```bash
+# Session-based Auth
+SESSION_COOKIE_NAME="autoann_session"
+SESSION_EXPIRE_MINUTES=1440        # 24 hours sliding window
+SESSION_ABSOLUTE_EXPIRE_DAYS=7     # Force re-login after 7 days
+CSRF_SECRET_KEY="<generate-with-openssl-rand-hex-32>"
+
+# Email (SendGrid) - Required for invites/magic links
+SENDGRID_API_KEY="SG.your-api-key-here"
+SENDGRID_FROM_EMAIL="noreply@yourdomain.com"
+SENDGRID_FROM_NAME="Auto-Annotation Platform"
+
+# Frontend URL (for email links)
+FRONTEND_URL="https://your-domain.com"
+
+# Optional: Google OIDC
+GOOGLE_CLIENT_ID="your-google-client-id"
+GOOGLE_CLIENT_SECRET="your-google-client-secret"
+```
+
+### Database Setup
+
+Initialize the database with tables and default admin user:
+
+```bash
+cd backend
+source .venv/bin/activate
+python scripts/setup_db.py
+```
+
+This creates:
+- All auth tables (users, tenants, sessions, invites, etc.)
+- Default tenant: "Default Organization"
+- Default admin user: `admin@example.com` / `password`
+
+**⚠️ Change the admin password immediately after first login!**
+
+### Email Service (SendGrid)
+
+For production with external users, configure SendGrid:
+
+1. **Create account**: https://signup.sendgrid.com/ (free tier: 100 emails/day)
+2. **Get API key**: Settings → API Keys → Create API Key
+3. **Verify sender**: Settings → Sender Authentication → Verify Single Sender
+4. **Update .env**: Add your `SENDGRID_API_KEY`
+
+Without SendGrid configured, emails are logged to console (useful for development).
+
+### User Onboarding Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    INVITE FLOW                               │
+│                                                              │
+│  1. Admin creates invite via /ops/tenants/{id}/invite       │
+│  2. System sends email with invite link                      │
+│  3. User clicks link → /auth/invite/info?token=xxx          │
+│  4. User fills registration form                             │
+│  5. POST /auth/invite/accept → Creates user + session       │
+│  6. User is logged in and redirected to dashboard           │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                  MAGIC LINK FLOW                             │
+│                                                              │
+│  1. User requests magic link at /login                       │
+│  2. POST /auth/magic-link/request with email                │
+│  3. System sends email with login link                       │
+│  4. User clicks link → GET /auth/magic-link/verify?token=xx │
+│  5. Session created, user logged in                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Per-Tenant GCP Credentials
+
+Each tenant can have their own Airflow token and GCP credentials stored securely:
+
+```python
+# Tenant model fields
+class Tenant(Base):
+    airflow_token_encrypted = Column(Text)  # Encrypted Airflow JWT
+    gcp_credentials_secret = Column(String) # GCP Secret Manager path
+```
+
+When a user triggers a job, the system uses their tenant's credentials instead of the global defaults.
+
+### Frontend Auth Integration
+
+The frontend uses cookie-based auth with CSRF protection:
+
+```typescript
+// lib/api.ts - Axios interceptor
+api.interceptors.request.use((config) => {
+  config.withCredentials = true; // Send cookies
+  const csrfToken = getCsrfToken();
+  if (csrfToken && ['post', 'put', 'delete'].includes(config.method)) {
+    config.headers['X-CSRF-Token'] = csrfToken;
+  }
+  return config;
+});
+```
+
+### Security Features
+
+- **Password Requirements**: Min 8 chars, not in common password list
+- **Rate Limiting**: 5 login attempts per 15 minutes per IP
+- **Session Invalidation**: All sessions cleared on password change
+- **Audit Logging**: All auth events logged with IP, user agent, timestamp
+- **HTTPS Required**: Cookies set with `Secure` flag in production
+
+### SQLite Compatibility Notes
+
+For development with SQLite:
+- UUIDs stored as String(36) via custom `GUID` type in `backend/app/db/types.py`
+- Datetimes stored as naive UTC (no timezone info)
+- Use `datetime.utcnow()` instead of `datetime.now(timezone.utc)` for comparisons
+
+For production, use PostgreSQL which handles these natively.
+
+### Troubleshooting Auth Issues
+
+1. **"TypeError: can't compare offset-naive and offset-aware datetimes"**
+   - *Cause*: SQLite stores naive datetimes but code used timezone-aware `now()`
+   - *Fix*: All datetime comparisons use `datetime.utcnow()` (naive UTC)
+
+2. **"metadata" column error in SQLAlchemy**
+   - *Cause*: "metadata" is a reserved SQLAlchemy attribute name
+   - *Fix*: Renamed to `event_metadata` in AuditLog model
+
+3. **bcrypt/passlib compatibility error**
+   - *Cause*: bcrypt 5.x incompatible with passlib 1.7.4
+   - *Fix*: Pin `bcrypt==4.0.1` in requirements.txt
+
+4. **Login works but /auth/me fails**
+   - Check session cookie is being set (browser dev tools → Application → Cookies)
+   - Ensure `withCredentials: true` in axios config
+   - Verify CORS allows credentials from frontend origin
+
+---
+
+## 8. Deployment Checklist
+
+Before deploying to production:
+
+- [ ] Generate new `SECRET_KEY` and `CSRF_SECRET_KEY` using `openssl rand -hex 32`
+- [ ] Set up PostgreSQL and update `SQLALCHEMY_DATABASE_URI`
+- [ ] Configure SendGrid and verify sender email
+- [ ] Update `FRONTEND_URL` to production domain
+- [ ] Update `BACKEND_CORS_ORIGINS` with production domains
+- [ ] Change default admin password
+- [ ] Set `SESSION_COOKIE_SECURE=true` for HTTPS
+- [ ] Configure proper SSL/TLS certificates
+- [ ] Set up monitoring/alerting for auth failures

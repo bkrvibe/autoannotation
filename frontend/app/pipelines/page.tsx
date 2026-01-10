@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useRequireAuth } from '@/lib/auth-context';
 import { AppLayout } from '@/components/layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -83,18 +84,16 @@ function getPipelineDisplayInfo(pipeline: Pipeline) {
 
 export default function PipelinesPage() {
   const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useRequireAuth();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/login');
-    } else {
+    if (isAuthenticated) {
       fetchPipelines();
     }
-  }, [router]);
+  }, [isAuthenticated]);
 
   const fetchPipelines = async () => {
     try {
@@ -123,7 +122,7 @@ export default function PipelinesPage() {
     return info?.category === '2D' || (!info && !p.id.includes('3d'));
   });
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <AppLayout title="Pipelines" description="Available annotation pipelines">
         <div className="flex items-center justify-center h-[50vh]">

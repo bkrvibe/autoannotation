@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { useAuth, useRequireAuth } from '@/lib/auth-context';
 import { AppLayout } from '@/components/layout';
 import { StatusBadge } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,17 +33,16 @@ interface Job {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useRequireAuth();
+  const { user, tenant } = useAuth();
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/login');
-    } else {
+    if (isAuthenticated) {
       fetchJobs();
     }
-  }, [router]);
+  }, [isAuthenticated]);
 
   const fetchJobs = async () => {
     try {
@@ -54,6 +54,15 @@ export default function DashboardPage() {
       setLoading(false);
     }
   };
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // Calculate stats
   const totalJobs = jobs.length;

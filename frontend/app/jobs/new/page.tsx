@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useRequireAuth } from '@/lib/auth-context';
 import { AppLayout } from '@/components/layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -102,6 +103,7 @@ export default function NewJobPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedPipelineId = searchParams.get('pipeline');
+  const { isAuthenticated, loading: authLoading } = useRequireAuth();
   
   const [step, setStep] = useState(1);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -121,13 +123,10 @@ export default function NewJobPage() {
   const [fileInputKey, setFileInputKey] = useState(Date.now()); // Key to reset file inputs
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/login');
-    } else {
+    if (isAuthenticated) {
       fetchPipelines();
     }
-  }, [router]);
+  }, [isAuthenticated]);
 
   const fetchPipelines = async () => {
     try {

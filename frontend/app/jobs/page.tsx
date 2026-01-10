@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useRequireAuth } from '@/lib/auth-context';
 import { AppLayout } from '@/components/layout';
 import { StatusBadge } from '@/components/common';
 import { Card, CardContent } from '@/components/ui/card';
@@ -39,19 +40,17 @@ const statusFilters = [
 
 export default function JobsPage() {
   const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useRequireAuth();
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/login');
-    } else {
+    if (isAuthenticated) {
       fetchJobs();
     }
-  }, [router]);
+  }, [isAuthenticated]);
 
   const fetchJobs = async () => {
     try {
@@ -63,6 +62,15 @@ export default function JobsPage() {
       setLoading(false);
     }
   };
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // Filter jobs
   const filteredJobs = jobs.filter(job => {

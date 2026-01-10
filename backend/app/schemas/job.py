@@ -1,4 +1,5 @@
 from typing import Dict, Any, Optional
+from uuid import UUID
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -17,12 +18,12 @@ class JobUpdate(BaseModel):
 
 class Job(JobBase):
     id: int
-    tenant_id: str
+    tenant_id: UUID
     airflow_dag_id: str
     airflow_run_id: Optional[str]
     status: str
     created_at: datetime
-    # config: Dict[str, Any] # mapped from overrides + defaults
+    result_artifacts: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
