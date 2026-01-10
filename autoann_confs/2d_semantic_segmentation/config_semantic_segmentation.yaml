@@ -1,0 +1,60 @@
+# Multi-Class Semantic Segmentation Configuration
+# Supports Mask2Former and OneFormer on Cityscapes (19 classes)
+
+# Model Configuration
+model:
+  # Architecture: "mask2former" (83.3% mIoU, faster) or "oneformer" (84.0% mIoU - SOTA)
+  architecture: "mask2former"
+  
+  # Model size: 
+  #   mask2former: tiny, small, base, large
+  #   oneformer: large, dinat_large
+  size: "large"
+  device: "cuda"
+  use_fp16: true
+
+# Input/Output Paths
+paths:
+  input_folder: "/data/images"
+  output_folder: "/app/outputs"
+
+# Classes to segment (leave empty or remove to process ALL 19 classes)
+# Cityscapes classes:
+#   road, sidewalk, building, wall, fence, pole, traffic light, traffic sign,
+#   vegetation, terrain, sky, person, rider, car, truck, bus, train, motorcycle, bicycle
+classes:
+  # Uncomment to filter specific classes:
+  # include:
+  #   - "road"
+  #   - "sidewalk"
+  #   - "car"
+  #   - "person"
+  #   - "bicycle"
+
+# Segmentation Settings
+segmentation:
+  # Minimum area in pixels to keep a segment
+  min_area_pixels: 500
+  
+  # Polygon simplification tolerance (higher = simpler polygons)
+  polygon_simplify_tolerance: 2.0
+
+# Output Settings
+output:
+  # Save per-class binary masks in separate folders
+  save_per_class_masks: true
+  
+  # Save combined segmentation mask (class ID per pixel)
+  save_combined_mask: true
+  
+  # Save colored visualization overlays
+  save_visualizations: true
+  
+  # Visualization overlay transparency (0.0 - 1.0)
+  visualization_alpha: 0.5
+  
+  # Save COCO format JSON
+  save_coco_json: true
+  
+  # COCO JSON filename
+  coco_filename: "semantic_segmentation.json"

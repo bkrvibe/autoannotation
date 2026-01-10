@@ -82,6 +82,36 @@ export const api = {
         }
       });
       return response.data; // { gcs_path: string }
+    },
+    uploadMultiple: async (files: FileList | File[], onProgress?: (progress: number) => void) => {
+      const formData = new FormData();
+      
+      // Append all files - for folder uploads, the webkitRelativePath contains the folder structure
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        // Use webkitRelativePath if available (folder upload), otherwise just the name
+        const relativePath = (file as any).webkitRelativePath || file.name;
+        formData.append('files', file, relativePath);
+      }
+      
+      const response = await axiosInstance.post('/utils/upload-multiple', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 600000, // 10 minute timeout for large uploads
+        onUploadProgress: (progressEvent) => {
+            if (onProgress && progressEvent.total) {
+                // Cap at 95% during upload, the last 5% is for server processing
+                const percentCompleted = Math.min(95, Math.round((progressEvent.loaded * 95) / progressEvent.total));
+                onProgress(percentCompleted);
+            }
+        }
+      });
+      // Signal completion
+      if (onProgress) {
+        onProgress(100);
+      }
+      return response.data; // { gcs_path: string, file_count: number, files: [...] }
     }
   }
 };

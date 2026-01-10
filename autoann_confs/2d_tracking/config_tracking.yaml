@@ -1,0 +1,80 @@
+# ============================================================================
+# 2D Object Tracking Configuration for Airflow DAG
+# ============================================================================
+
+# Input/Output paths (overridden via command line)
+annotations_file: "/app/inputs/instances_dino.json"
+images_dir: "/app/inputs/images"
+output_dir: "/app/outputs"
+
+# Device configuration
+device: "cuda"
+
+# ============================================================================
+# APPEARANCE MODEL - Feature extraction for re-identification
+# ============================================================================
+appearance:
+  # OSNet model for appearance features
+  model: "osnet_x1_0"
+  feature_dim: 512
+  # Use segmentation masks for focused feature extraction (if available)
+  use_masks: true
+  mask_threshold: 0.5
+
+# ============================================================================
+# TRACKING PARAMETERS
+# ============================================================================
+tracking:
+  # Detection filtering
+  min_confidence: 0.0           # Minimum detection confidence
+  min_area: 1000                # Minimum bbox area in pixels²
+  exclude_top_percent: 40.0     # Ignore detections in top N% of image
+  
+  # Matching thresholds (ALL must be satisfied)
+  iou_threshold: 0.3            # Minimum IoU for spatial match
+  max_position_distance: 50     # Maximum center distance in pixels
+  max_appearance_distance: 0.7  # Maximum cosine distance for appearance
+  
+  # Cost function weights
+  position_weight: 0.5          # Weight for position-based cost
+  appearance_weight: 0.5        # Weight for appearance-based cost
+  
+  # Track lifecycle
+  max_age: 1                    # Frames to keep unmatched track before deletion
+  min_hits: 1                   # Minimum detections to confirm track
+  min_track_length: 5           # Minimum track length to keep in output
+  
+  # Kalman filter
+  use_kalman: true
+  process_noise: 1.0
+  measurement_noise: 10.0
+  
+  # Gap interpolation
+  enable_interpolation: true
+  max_interpolation_gap: 2      # Maximum frames to interpolate
+  
+  # Overlap filtering
+  filter_overlapping_masks: false
+  mask_iou_threshold: 0.1       # For tracks with segmentation masks
+  bbox_iou_threshold: 0.8       # For interpolated tracks without masks
+
+# ============================================================================
+# VISUALIZATION
+# ============================================================================
+visualization:
+  enable: true
+  draw_boxes: true
+  draw_ids: true
+  draw_masks: true
+  font_scale: 0.4
+  thickness: 2
+  max_frames: 0                 # 0 = all frames
+  enable_video: true
+
+# ============================================================================
+# DIAGNOSTICS
+# ============================================================================
+diagnostics:
+  enable: true
+  print_summary: true
+  export_json: true

@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { AppLayout } from '@/components/layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -20,7 +21,8 @@ import {
   Image,
   Layers,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Route
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Progress } from "@/components/ui/progress"
@@ -35,6 +37,51 @@ interface Pipeline {
   conf_defaults: any;
 }
 
+// Pipeline categorization and display names
+const PIPELINE_INFO: Record<string, { category: '2D' | '3D'; displayName: string; description: string }> = {
+  'auto_annotation_pipeline_dynamic': {
+    category: '3D',
+    displayName: '3D Object Detection & Tracking',
+    description: 'Automated 3D object detection and tracking for LiDAR point cloud data'
+  },
+  'image_auto_annotation_2d': {
+    category: '2D',
+    displayName: '2D Object Detection',
+    description: 'Multi-class object detection using GroundingDINO with CLIP classification'
+  },
+  'image_auto_annotation_2d_segmentation': {
+    category: '2D',
+    displayName: '2D Instance Segmentation',
+    description: 'Instance segmentation using SAM2 with bounding box prompts'
+  },
+  'image_auto_annotation_2d_semantic_segmentation': {
+    category: '2D',
+    displayName: '2D Semantic Segmentation',
+    description: 'Semantic segmentation using Mask2Former/OneFormer on Cityscapes classes'
+  },
+  'image_auto_annotation_2d_tracking': {
+    category: '2D',
+    displayName: '2D Object Tracking',
+    description: 'Multi-object tracking with appearance features and Kalman filtering'
+  }
+};
+
+function getPipelineDisplayInfo(pipeline: Pipeline) {
+  const info = PIPELINE_INFO[pipeline.id];
+  if (info) {
+    return {
+      displayName: info.displayName,
+      description: info.description,
+      category: info.category
+    };
+  }
+  return {
+    displayName: pipeline.display_name,
+    description: pipeline.description,
+    category: pipeline.id.includes('3d') ? '3D' as const : '2D' as const
+  };
+}
+
 const steps = [
   { id: 1, name: 'Model', description: 'Choose annotation model' },
   { id: 2, name: 'Data', description: 'Input source' },
@@ -44,7 +91,8 @@ const steps = [
 
 function getPipelineIcon(pipeline: Pipeline) {
   const id = pipeline.id.toLowerCase();
-  if (id.includes('3d') || id.includes('point_cloud')) return Box;
+  if (id.includes('auto_annotation_pipeline_dynamic')) return Box;
+  if (id.includes('tracking')) return Route;
   if (id.includes('segmentation')) return Layers;
   if (id.includes('2d') || id.includes('image')) return Image;
   return Sparkles;
@@ -52,6 +100,9 @@ function getPipelineIcon(pipeline: Pipeline) {
 
 export default function NewJobPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preselectedPipelineId = searchParams.get('pipeline');
+  
   const [step, setStep] = useState(1);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<Pipeline | null>(null);
@@ -65,9 +116,11 @@ export default function NewJobPage() {
   const [pipelinesLoading, setPipelinesLoading] = useState(true);
   const [error, setError] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadedFileCount, setUploadedFileCount] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [fileInputKey, setFileInputKey] = useState(Date.now()); // Key to reset file inputs
 
   useEffect(() => {
-
     const token = localStorage.getItem('token');
     if (!token) {
       router.push('/login');
@@ -80,6 +133,15 @@ export default function NewJobPage() {
     try {
       const data = await api.pipelines.list();
       setPipelines(data);
+      
+      // If pipeline is preselected via URL, auto-select it
+      if (preselectedPipelineId) {
+        const preselected = data.find((p: Pipeline) => p.id === preselectedPipelineId);
+        if (preselected) {
+          handlePipelineSelect(preselected);
+          setStep(2); // Skip to data step
+        }
+      }
     } catch (err) {
       console.error(err);
       setError('Failed to load pipelines');
@@ -90,8 +152,20 @@ export default function NewJobPage() {
 
   const handlePipelineSelect = (pipeline: Pipeline) => {
     setSelectedPipeline(pipeline);
+    // Load default config from backend (will be enhanced with YAML configs)
     setConfig(pipeline.conf_defaults || {});
   };
+
+  // Separate pipelines into 2D and 3D
+  const pipelines3D = pipelines.filter(p => {
+    const info = PIPELINE_INFO[p.id];
+    return info?.category === '3D' || (!info && p.id.includes('3d'));
+  });
+
+  const pipelines2D = pipelines.filter(p => {
+    const info = PIPELINE_INFO[p.id];
+    return info?.category === '2D' || (!info && !p.id.includes('3d'));
+  });
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -213,63 +287,120 @@ export default function NewJobPage() {
                     <p className="text-sm text-muted-foreground mt-1">Please contact support</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {pipelines.map((p) => {
-                      const Icon = getPipelineIcon(p);
-                      const isSelected = selectedPipeline?.id === p.id;
-                      
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() => handlePipelineSelect(p)}
-                          className={cn(
-                            "relative p-5 rounded-xl border-2 text-left transition-all duration-200",
-                            "hover:border-primary/50 hover:bg-secondary/30",
-                            isSelected 
-                              ? "border-primary bg-primary/5 ring-2 ring-primary/20" 
-                              : "border-border bg-card"
-                          )}
-                        >
-                          {isSelected && (
-                            <div className="absolute top-3 right-3">
-                              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                                <Check className="h-4 w-4 text-white" />
-                              </div>
-                            </div>
-                          )}
-                          
-                          <div className={cn(
-                            "w-12 h-12 rounded-xl flex items-center justify-center mb-4",
-                            isSelected ? "bg-primary/10" : "bg-secondary"
-                          )}>
-                            <Icon className={cn(
-                              "h-6 w-6",
-                              isSelected ? "text-primary" : "text-muted-foreground"
-                            )} />
-                          </div>
-                          
-                          <h3 className="font-semibold text-foreground mb-1">
-                            {p.display_name}
-                          </h3>
-                          <p className="text-sm text-muted-foreground line-clamp-2">
-                            {p.description}
-                          </p>
-                          
-                          {p.tags && p.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mt-3">
-                              {p.tags.slice(0, 3).map((tag) => (
-                                <span 
-                                  key={tag} 
-                                  className="px-2 py-0.5 rounded-full bg-secondary text-xs text-muted-foreground"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
+                  <div className="space-y-6">
+                    {/* 3D Pipelines */}
+                    {pipelines3D.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Box className="h-5 w-5 text-primary" />
+                          <h3 className="font-medium text-foreground">3D Pipelines</h3>
+                          <Badge variant="secondary" className="text-xs">{pipelines3D.length}</Badge>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {pipelines3D.map((p) => {
+                            const Icon = getPipelineIcon(p);
+                            const isSelected = selectedPipeline?.id === p.id;
+                            const info = getPipelineDisplayInfo(p);
+                            
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => handlePipelineSelect(p)}
+                                className={cn(
+                                  "relative p-5 rounded-xl border-2 text-left transition-all duration-200",
+                                  "hover:border-primary/50 hover:bg-secondary/30",
+                                  isSelected 
+                                    ? "border-primary bg-primary/5 ring-2 ring-primary/20" 
+                                    : "border-border bg-card"
+                                )}
+                              >
+                                {isSelected && (
+                                  <div className="absolute top-3 right-3">
+                                    <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                                      <Check className="h-4 w-4 text-white" />
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                <div className={cn(
+                                  "w-12 h-12 rounded-xl flex items-center justify-center mb-4",
+                                  isSelected ? "bg-primary/10" : "bg-secondary"
+                                )}>
+                                  <Icon className={cn(
+                                    "h-6 w-6",
+                                    isSelected ? "text-primary" : "text-muted-foreground"
+                                  )} />
+                                </div>
+                                
+                                <h3 className="font-semibold text-foreground mb-1">
+                                  {info.displayName}
+                                </h3>
+                                <p className="text-sm text-muted-foreground line-clamp-2">
+                                  {info.description}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 2D Pipelines */}
+                    {pipelines2D.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Image className="h-5 w-5 text-primary" />
+                          <h3 className="font-medium text-foreground">2D Pipelines</h3>
+                          <Badge variant="secondary" className="text-xs">{pipelines2D.length}</Badge>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {pipelines2D.map((p) => {
+                            const Icon = getPipelineIcon(p);
+                            const isSelected = selectedPipeline?.id === p.id;
+                            const info = getPipelineDisplayInfo(p);
+                            
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => handlePipelineSelect(p)}
+                                className={cn(
+                                  "relative p-5 rounded-xl border-2 text-left transition-all duration-200",
+                                  "hover:border-primary/50 hover:bg-secondary/30",
+                                  isSelected 
+                                    ? "border-primary bg-primary/5 ring-2 ring-primary/20" 
+                                    : "border-border bg-card"
+                                )}
+                              >
+                                {isSelected && (
+                                  <div className="absolute top-3 right-3">
+                                    <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                                      <Check className="h-4 w-4 text-white" />
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                <div className={cn(
+                                  "w-12 h-12 rounded-xl flex items-center justify-center mb-4",
+                                  isSelected ? "bg-primary/10" : "bg-secondary"
+                                )}>
+                                  <Icon className={cn(
+                                    "h-6 w-6",
+                                    isSelected ? "text-primary" : "text-muted-foreground"
+                                  )} />
+                                </div>
+                                
+                                <h3 className="font-semibold text-foreground mb-1">
+                                  {info.displayName}
+                                </h3>
+                                <p className="text-sm text-muted-foreground line-clamp-2">
+                                  {info.description}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -299,55 +430,158 @@ export default function NewJobPage() {
 
                   {/* File Upload / GCS Path Toggle */}
                    <div className="space-y-4">
-                    <div className="border border-dashed border-border rounded-xl p-6 text-center hover:bg-secondary/20 transition-colors">
-                      <label className="cursor-pointer block">
-                        <input
-                          type="file"
-                          className="hidden"
-                          onChange={async (e) => {
-                             if (e.target.files && e.target.files[0]) {
-                               const file = e.target.files[0];
-                               try {
-                                 setLoading(true);
-                                 setUploadProgress(0);
-                                 // Call upload API
-                                 const res = await api.utils.upload(file, (progress) => {
-                                    setUploadProgress(progress);
-                                 });
-                                 setInputUri(res.gcs_path);
-                               } catch (err) {
-                                 console.error(err);
-                                 setError("Failed to upload file");
-                               } finally {
-                                 setLoading(false);
+                    {/* Upload Options - Two columns */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Single/Multiple Files Upload */}
+                      <div className={`border border-dashed border-border rounded-xl p-6 text-center transition-colors ${isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-secondary/20 cursor-pointer'}`}>
+                        <label className={`block ${isUploading ? 'pointer-events-none' : 'cursor-pointer'}`}>
+                          <input
+                            key={`files-${fileInputKey}`}
+                            type="file"
+                            multiple
+                            accept="image/*,.zip"
+                            className="hidden"
+                            disabled={isUploading}
+                            onChange={async (e) => {
+                               if (e.target.files && e.target.files.length > 0 && !isUploading) {
+                                 const filesToUpload = e.target.files;
+                                 try {
+                                   setIsUploading(true);
+                                   setUploadProgress(0);
+                                   setError('');
+                                   setUploadedFileCount(0);
+                                   
+                                   if (filesToUpload.length === 1) {
+                                     // Single file - use original endpoint
+                                     const file = filesToUpload[0];
+                                     const res = await api.utils.upload(file, (progress) => {
+                                        setUploadProgress(progress);
+                                     });
+                                     setInputUri(res.gcs_path);
+                                     setUploadedFileCount(1);
+                                   } else {
+                                     // Multiple files
+                                     const res = await api.utils.uploadMultiple(filesToUpload, (progress) => {
+                                        setUploadProgress(progress);
+                                     });
+                                     setInputUri(res.gcs_path);
+                                     setUploadedFileCount(res.file_count);
+                                   }
+                                 } catch (err: any) {
+                                   console.error(err);
+                                   setError(err.response?.data?.detail || "Failed to upload files");
+                                   setUploadedFileCount(0);
+                                 } finally {
+                                   setIsUploading(false);
+                                   setFileInputKey(Date.now()); // Reset file input
+                                 }
                                }
-                             }
-                          }}
-                        />
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                            <FolderInput className="h-6 w-6 text-primary" />
+                            }}
+                          />
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                              <Image className="h-6 w-6 text-primary" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                {isUploading ? (
+                                  <span className="flex items-center gap-2">
+                                      {uploadProgress >= 95 ? "Processing..." : `Uploading... ${uploadProgress}%`}
+                                  </span>
+                                ) : "Upload Files"}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Select images or a zip file
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">
-                              {loading ? (
-                                <span className="flex items-center gap-2">
-                                    Uploading... {uploadProgress}%
-                                </span>
-                              ) : "Click to upload local file"}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Supports folders (zip) or individual files
-                            </p>
-                            {loading && (
-                                <div className="w-[200px] mt-2">
-                                    <Progress value={uploadProgress} className="h-2" />
-                                </div>
-                            )}
+                        </label>
+                      </div>
+
+                      {/* Folder Upload */}
+                      <div className={`border border-dashed border-border rounded-xl p-6 text-center transition-colors ${isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-secondary/20 cursor-pointer'}`}>
+                        <label className={`block ${isUploading ? 'pointer-events-none' : 'cursor-pointer'}`}>
+                          <input
+                            key={`folder-${fileInputKey}`}
+                            type="file"
+                            className="hidden"
+                            disabled={isUploading}
+                            {...{ webkitdirectory: "", directory: "" } as any}
+                            onChange={async (e) => {
+                               if (e.target.files && e.target.files.length > 0 && !isUploading) {
+                                 const filesToUpload = e.target.files;
+                                 try {
+                                   setIsUploading(true);
+                                   setUploadProgress(0);
+                                   setError('');
+                                   setUploadedFileCount(0);
+                                   
+                                   const res = await api.utils.uploadMultiple(filesToUpload, (progress) => {
+                                      setUploadProgress(progress);
+                                   });
+                                   setInputUri(res.gcs_path);
+                                   setUploadedFileCount(res.file_count);
+                                 } catch (err: any) {
+                                   console.error(err);
+                                   setError(err.response?.data?.detail || "Failed to upload folder");
+                                   setUploadedFileCount(0);
+                                 } finally {
+                                   setIsUploading(false);
+                                   setFileInputKey(Date.now()); // Reset file input
+                                 }
+                               }
+                            }}
+                          />
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                              <FolderInput className="h-6 w-6 text-primary" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                {isUploading ? (
+                                  <span className="flex items-center gap-2">
+                                      {uploadProgress >= 95 ? "Processing..." : `Uploading... ${uploadProgress}%`}
+                                  </span>
+                                ) : "Upload Folder"}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Select an entire folder
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      </label>
+                        </label>
+                      </div>
                     </div>
+
+                    {/* Upload Progress */}
+                    {isUploading && (
+                      <div className="p-4 rounded-lg bg-secondary/30 border border-border">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm text-foreground">
+                            {uploadProgress >= 95 ? "Processing on server..." : "Uploading..."}
+                          </span>
+                          <span className="text-sm text-muted-foreground">{uploadProgress}%</span>
+                        </div>
+                        <Progress value={uploadProgress} className="h-2" />
+                        {uploadProgress >= 95 && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Files are being uploaded to cloud storage. This may take a moment...
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Upload Success */}
+                    {!isUploading && uploadedFileCount > 0 && inputUri && (
+                      <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                          <span className="text-sm text-foreground">
+                            Uploaded {uploadedFileCount} file{uploadedFileCount > 1 ? 's' : ''} successfully
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="relative flex items-center py-2">
                       <div className="flex-grow border-t border-border"></div>
@@ -405,18 +639,88 @@ export default function NewJobPage() {
                 <div className="mb-6">
                   <h2 className="text-xl font-semibold text-foreground">Configuration</h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Customize pipeline parameters (optional - defaults are pre-filled)
+                    Customize threshold and confidence parameters (defaults are pre-filled)
                   </p>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-6">
+                  {/* Threshold Fields - Easy Edit */}
+                  {selectedPipeline?.conf_schema?.threshold_fields && 
+                   Object.keys(selectedPipeline.conf_schema.threshold_fields).length > 0 && (
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+                        <Settings className="h-4 w-4" />
+                        Threshold Parameters
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {Object.entries(selectedPipeline.conf_schema.threshold_fields).map(([key, value]) => {
+                          // Parse nested key path
+                          const keyParts = key.split('.');
+                          const displayName = keyParts[keyParts.length - 1]
+                            .replace(/_/g, ' ')
+                            .replace(/\b\w/g, l => l.toUpperCase());
+                          
+                          // Get current value from config
+                          const getCurrentValue = () => {
+                            let current: any = config;
+                            for (const part of keyParts) {
+                              if (current && typeof current === 'object') {
+                                current = current[part];
+                              } else {
+                                return value;
+                              }
+                            }
+                            return current ?? value;
+                          };
+                          
+                          // Set value in nested config
+                          const setNestedValue = (newValue: number) => {
+                            const newConfig = JSON.parse(JSON.stringify(config));
+                            let current = newConfig;
+                            for (let i = 0; i < keyParts.length - 1; i++) {
+                              if (!current[keyParts[i]]) {
+                                current[keyParts[i]] = {};
+                              }
+                              current = current[keyParts[i]];
+                            }
+                            current[keyParts[keyParts.length - 1]] = newValue;
+                            setConfig(newConfig);
+                          };
+                          
+                          return (
+                            <div key={key} className="p-4 rounded-lg border border-border bg-card">
+                              <label className="text-sm font-medium text-foreground block mb-2">
+                                {displayName}
+                              </label>
+                              <div className="flex items-center gap-3">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  max="1"
+                                  value={getCurrentValue()}
+                                  onChange={(e) => setNestedValue(parseFloat(e.target.value) || 0)}
+                                  className="w-24 font-mono"
+                                />
+                                <span className="text-xs text-muted-foreground flex-1">
+                                  {key}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Full JSON Editor */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground flex items-center gap-2">
                       <Settings className="h-4 w-4" />
-                      Configuration Overrides
+                      Full Configuration (JSON)
                     </label>
                     <textarea
-                      rows={14}
+                      rows={12}
                       className={cn(
                         "w-full rounded-lg border border-border bg-[#0c0e14] px-4 py-3",
                         "text-sm font-mono text-foreground",
@@ -433,7 +737,7 @@ export default function NewJobPage() {
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Modify the JSON configuration to override default pipeline settings
+                      This JSON will be sent to the Airflow DAG as configuration
                     </p>
                   </div>
                 </div>
@@ -461,7 +765,9 @@ export default function NewJobPage() {
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground uppercase tracking-wider">Model</p>
-                          <p className="font-medium text-foreground">{selectedPipeline?.display_name}</p>
+                          <p className="font-medium text-foreground">
+                            {selectedPipeline ? getPipelineDisplayInfo(selectedPipeline).displayName : ''}
+                          </p>
                         </div>
                       </div>
                       <Button variant="ghost" size="sm" onClick={() => setStep(1)}>

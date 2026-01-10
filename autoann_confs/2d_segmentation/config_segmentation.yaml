@@ -1,0 +1,49 @@
+# 2D Object Segmentation Configuration for Airflow DAG
+
+# SAM2 model configuration
+sam2:
+  # Model checkpoint - will be downloaded automatically if not present
+  # Options: sam2.1_hiera_tiny, sam2.1_hiera_small, sam2.1_hiera_base_plus, sam2.1_hiera_large
+  model_name: "sam2.1_hiera_large"
+  
+  # Device for inference
+  device: "cuda"
+
+# Input/Output paths (overridden via command line arguments)
+paths:
+  # Path to detection COCO JSON (from detection container)
+  detections: "/app/outputs/multiclass_results/consolidated/instances_dino.json"
+  
+  # Path to input images
+  images: "/data"
+  
+  # Output directory for segmentation results
+  output: "/app/outputs/segmentation"
+
+# Segmentation settings
+segmentation:
+  # Use bounding boxes as prompts (from detections)
+  use_box_prompts: true
+  
+  # Multimask output - return multiple mask predictions per box
+  multimask_output: false
+  
+  # Mask threshold for binarization
+  mask_threshold: 0.0
+
+# Output settings
+output:
+  # Save segmentation masks as PNG files
+  save_masks: true
+  
+  # Save visualization with masks overlaid on images
+  save_visualizations: true
+  
+  # Save COCO format JSON with segmentation annotations
+  save_coco_json: true
+  
+  # Visualization settings
+  visualization:
+    mask_alpha: 0.5
+    show_boxes: true
+    show_labels: true

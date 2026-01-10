@@ -1,0 +1,78 @@
+# 2D Multi-Class Detection Configuration for Airflow DAG
+# This config is mounted to the container and paths are overridden via CLI
+
+# Input/Output Configuration
+# NOTE: These are default paths inside the container; actual paths are passed via CLI
+image_glob: "/data/*.jpg"
+output_dir: "/app/outputs"
+max_images: 0  # 0 = all images
+
+# ============================================================================
+# OBJECT DETECTION PARAMETERS
+# ============================================================================
+
+# batch_size: Number of images to process in parallel
+batch_size: 4
+
+# classes_to_detect: List of natural language descriptions to detect
+classes_to_detect:
+  - "vehicle"
+  - "pedestrian"
+
+# box_threshold: Confidence threshold for detection boxes (0.0-1.0)
+box_threshold: 0.1
+
+# text_threshold: Confidence for text-image matching (0.0-1.0)
+text_threshold: 0.25
+
+# min_box_wh: Minimum width OR height in pixels
+min_box_wh: 10
+
+# min_box_area: Minimum bounding box area in pixels²
+min_box_area: 100
+
+# top_margin_ratio: Fraction of image height to ignore from the top (0.0-1.0)
+top_margin_ratio: 0.4
+
+# ============================================================================
+# DETECTION MERGING
+# ============================================================================
+
+merge_mode: "nms"
+nms_iou_thresh: 0.5
+cross_class_nms_threshold: 0.8
+
+# ============================================================================
+# CLIP VEHICLE CLASSIFICATION
+# ============================================================================
+
+clip_classification:
+  model_name: "openai/clip-vit-large-patch14"
+  min_confidence: 0.0
+
+# ============================================================================
+# VISUALIZATION
+# ============================================================================
+
+visualization:
+  save_images: true
+  font_size: 0.3
+  thickness: 1
+  box_thickness: 1
+  class_colors:
+    vehicle: [0, 255, 0]      # Green
+    human: [255, 0, 0]        # Blue  
+    person: [255, 0, 0]       # Blue
+    car: [0, 255, 0]          # Green
+    truck: [0, 165, 255]      # Orange
+    bus: [0, 255, 255]        # Yellow
+    motorcycle: [255, 0, 255] # Magenta
+    bicycle: [255, 255, 0]    # Cyan
+    default: [255, 0, 255]    # Gray
+
+# ============================================================================
+# SYSTEM CONFIGURATION
+# ============================================================================
+
+gdino_checkpoint: "weights/groundingdino_swinb_cogcoor.pth"
+device: "cuda"
