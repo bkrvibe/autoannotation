@@ -83,6 +83,68 @@ function getPipelineDisplayInfo(pipeline: Pipeline) {
   };
 }
 
+// Separate component for number input to handle local state properly
+function ConfigNumberInput({ 
+  label, 
+  value, 
+  onChange, 
+  isBatchSize, 
+  isThreshold 
+}: { 
+  label: string; 
+  value: number; 
+  onChange: (val: number) => void; 
+  isBatchSize: boolean; 
+  isThreshold: boolean; 
+}) {
+  const [localValue, setLocalValue] = useState<string>(String(value));
+  
+  // Sync local value when external value changes
+  useEffect(() => {
+    setLocalValue(String(value));
+  }, [value]);
+  
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value;
+    setLocalValue(rawValue); // Allow any input including empty
+  };
+  
+  const handleBlur = () => {
+    // On blur, parse and update the actual config
+    if (localValue === '' || isNaN(Number(localValue))) {
+      // Reset to current value if empty or invalid
+      setLocalValue(String(value));
+    } else {
+      const parsed = isBatchSize 
+        ? Math.max(1, parseInt(localValue) || 1)
+        : Math.max(0, Math.min(isThreshold ? 1 : Infinity, parseFloat(localValue) || 0));
+      setLocalValue(String(parsed));
+      onChange(parsed);
+    }
+  };
+  
+  return (
+    <div className="p-4 rounded-lg border border-border bg-card">
+      <label className="text-sm font-medium text-foreground block mb-2">
+        {label}
+      </label>
+      <div className="flex items-center gap-3">
+        <Input
+          type="text"
+          inputMode={isBatchSize ? "numeric" : "decimal"}
+          value={localValue}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          className="w-28 font-mono"
+        />
+        <span className="text-xs text-muted-foreground flex-1">
+          {isBatchSize ? 'Images per batch' : isThreshold ? '0.0 - 1.0' : ''}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 const steps = [
   { id: 1, name: 'Model', description: 'Choose annotation model' },
   { id: 2, name: 'Data', description: 'Input source' },
@@ -638,38 +700,44 @@ export default function NewJobPage() {
                 <div className="mb-6">
                   <h2 className="text-xl font-semibold text-foreground">Configuration</h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Customize threshold and confidence parameters (defaults are pre-filled)
+                    Adjust parameters for the annotation model (defaults are pre-filled)
                   </p>
                 </div>
 
                 <div className="space-y-6">
-                  {/* Threshold Fields - Easy Edit */}
+                  {/* Configurable Fields - Easy Edit */}
                   {selectedPipeline?.conf_schema?.threshold_fields && 
-                   Object.keys(selectedPipeline.conf_schema.threshold_fields).length > 0 && (
+                   Object.keys(selectedPipeline.conf_schema.threshold_fields).length > 0 ? (
                     <div className="space-y-4">
                       <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
                         <Settings className="h-4 w-4" />
-                        Threshold Parameters
+                        Model Parameters
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {Object.entries(selectedPipeline.conf_schema.threshold_fields).map(([key, value]) => {
+                        {Object.entries(selectedPipeline.conf_schema.threshold_fields).map(([key, defaultValue]) => {
                           // Parse nested key path
                           const keyParts = key.split('.');
-                          const displayName = keyParts[keyParts.length - 1]
+                          const fieldName = keyParts[keyParts.length - 1];
+                          const displayName = fieldName
                             .replace(/_/g, ' ')
                             .replace(/\b\w/g, l => l.toUpperCase());
                           
+                          // Determine field type and constraints
+                          const isBatchSize = fieldName.toLowerCase() === 'batch_size';
+                          const isThreshold = fieldName.toLowerCase().includes('threshold') || 
+                                              fieldName.toLowerCase().includes('confidence');
+                          
                           // Get current value from config
-                          const getCurrentValue = () => {
+                          const getCurrentValue = (): number => {
                             let current: any = config;
                             for (const part of keyParts) {
                               if (current && typeof current === 'object') {
                                 current = current[part];
                               } else {
-                                return value;
+                                return defaultValue as number;
                               }
                             }
-                            return current ?? value;
+                            return current ?? defaultValue;
                           };
                           
                           // Set value in nested config
@@ -687,58 +755,24 @@ export default function NewJobPage() {
                           };
                           
                           return (
-                            <div key={key} className="p-4 rounded-lg border border-border bg-card">
-                              <label className="text-sm font-medium text-foreground block mb-2">
-                                {displayName}
-                              </label>
-                              <div className="flex items-center gap-3">
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  max="1"
-                                  value={getCurrentValue()}
-                                  onChange={(e) => setNestedValue(parseFloat(e.target.value) || 0)}
-                                  className="w-24 font-mono"
-                                />
-                                <span className="text-xs text-muted-foreground flex-1">
-                                  {key}
-                                </span>
-                              </div>
-                            </div>
+                            <ConfigNumberInput
+                              key={key}
+                              label={displayName}
+                              value={getCurrentValue()}
+                              onChange={setNestedValue}
+                              isBatchSize={isBatchSize}
+                              isThreshold={isThreshold}
+                            />
                           );
                         })}
                       </div>
                     </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Settings className="h-8 w-8 mx-auto mb-3 opacity-50" />
+                      <p>Using default configuration for this pipeline</p>
+                    </div>
                   )}
-
-                  {/* Full JSON Editor */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                      <Settings className="h-4 w-4" />
-                      Full Configuration (JSON)
-                    </label>
-                    <textarea
-                      rows={12}
-                      className={cn(
-                        "w-full rounded-lg border border-border bg-[#0c0e14] px-4 py-3",
-                        "text-sm font-mono text-foreground",
-                        "focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary",
-                        "placeholder:text-muted-foreground resize-none"
-                      )}
-                      value={JSON.stringify(config, null, 2)}
-                      onChange={(e) => {
-                        try {
-                          setConfig(JSON.parse(e.target.value));
-                        } catch {
-                          // Allow typing invalid JSON
-                        }
-                      }}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      This JSON will be sent to the Airflow DAG as configuration
-                    </p>
-                  </div>
                 </div>
               </div>
             )}
@@ -799,16 +833,41 @@ export default function NewJobPage() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground uppercase tracking-wider">Configuration</p>
-                            <p className="text-sm text-muted-foreground">{Object.keys(config).length} parameters</p>
+                            <p className="text-sm text-muted-foreground">
+                              {Object.keys(config).length > 0 ? `${Object.keys(config).length} parameter(s) configured` : 'Using defaults'}
+                            </p>
                           </div>
                         </div>
                         <Button variant="ghost" size="sm" onClick={() => setStep(3)}>
                           Edit
                         </Button>
                       </div>
-                      <pre className="text-xs bg-[#0c0e14] rounded-lg p-4 overflow-x-auto text-muted-foreground">
-                        {JSON.stringify(config, null, 2)}
-                      </pre>
+                      {Object.keys(config).length > 0 && (
+                        <div className="grid grid-cols-2 gap-3 bg-secondary/30 rounded-lg p-4">
+                          {Object.entries(config).map(([key, value]) => {
+                            // Flatten nested config for display
+                            const displayEntries: Array<{key: string, value: any}> = [];
+                            const flatten = (obj: any, prefix = '') => {
+                              if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+                                Object.entries(obj).forEach(([k, v]) => {
+                                  flatten(v, prefix ? `${prefix}.${k}` : k);
+                                });
+                              } else {
+                                displayEntries.push({ key: prefix, value: obj });
+                              }
+                            };
+                            flatten(value, key);
+                            return displayEntries.map(({ key: k, value: v }) => (
+                              <div key={k} className="flex justify-between items-center text-sm">
+                                <span className="text-muted-foreground capitalize">
+                                  {k.split('.').pop()?.replace(/_/g, ' ')}
+                                </span>
+                                <span className="font-mono text-foreground">{String(v)}</span>
+                              </div>
+                            ));
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

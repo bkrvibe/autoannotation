@@ -75,20 +75,30 @@ def _load_yaml_config(dag_id: str) -> Dict[str, Any]:
 
 
 def _extract_threshold_fields(config: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract fields that contain 'threshold' in their name from the config."""
-    thresholds = {}
+    """Extract user-configurable fields from the config (thresholds, confidence, batch_size)."""
+    configurable = {}
     
-    def find_thresholds(obj, prefix=""):
+    # Fields to exclude from user config
+    excluded_fields = {'cross_class_nms_threshold'}
+    
+    def find_configurable(obj, prefix=""):
         if isinstance(obj, dict):
             for key, value in obj.items():
                 full_key = f"{prefix}.{key}" if prefix else key
-                if 'threshold' in key.lower() or 'confidence' in key.lower():
-                    thresholds[full_key] = value
+                key_lower = key.lower()
+                
+                # Skip excluded fields
+                if key_lower in excluded_fields:
+                    continue
+                
+                # Include threshold, confidence, and batch_size fields
+                if 'threshold' in key_lower or 'confidence' in key_lower or key_lower == 'batch_size':
+                    configurable[full_key] = value
                 elif isinstance(value, dict):
-                    find_thresholds(value, full_key)
+                    find_configurable(value, full_key)
     
-    find_thresholds(config)
-    return thresholds
+    find_configurable(config)
+    return configurable
 
 
 def _get_pipeline_info(dag_id: str) -> Dict[str, Any]:

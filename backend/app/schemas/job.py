@@ -23,6 +23,7 @@ class Job(JobBase):
     airflow_run_id: Optional[str]
     status: str
     created_at: datetime
+    config: Optional[Dict[str, Any]] = None
     result_artifacts: Optional[Dict[str, Any]] = None
 
     class Config:

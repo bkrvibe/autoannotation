@@ -234,9 +234,35 @@ export default function JobDetailPage() {
               <CardTitle className="text-lg">Configuration</CardTitle>
             </CardHeader>
             <CardContent>
-               <pre className="text-xs font-mono bg-[#0c0e14] p-4 rounded-lg overflow-auto max-h-[300px] border border-border">
-                  {JSON.stringify(job.config, null, 2)}
-               </pre>
+               {(() => {
+                 // Extract user-relevant config fields
+                 const userFields = ['batch_size', 'box_threshold', 'text_threshold', 'nms_iou_thresh', 'classes_to_detect'];
+                 const config = job.config?.config || job.config || {};
+                 
+                 // Get entries that match user fields
+                 const displayEntries = Object.entries(config).filter(
+                   ([key]) => userFields.includes(key)
+                 );
+                 
+                 if (displayEntries.length === 0) {
+                   return <p className="text-sm text-muted-foreground">Using default configuration</p>;
+                 }
+                 
+                 return (
+                   <div className="space-y-3">
+                     {displayEntries.map(([key, value]) => (
+                       <div key={key} className="flex justify-between items-center py-2 border-b border-border last:border-0">
+                         <span className="text-sm text-muted-foreground capitalize">
+                           {key.replace(/_/g, ' ')}
+                         </span>
+                         <span className="text-sm font-mono text-foreground">
+                           {Array.isArray(value) ? value.join(', ') : String(value)}
+                         </span>
+                       </div>
+                     ))}
+                   </div>
+                 );
+               })()}
             </CardContent>
           </Card>
         </div>

@@ -73,9 +73,15 @@ def create_job(
     dag_id = job_in.pipeline_id
     
     try:
-        # Build config with tenant_id for isolation
-        final_conf = job_in.overrides or {}
-        final_conf["tenant_id"] = str(current_user.tenant_id)
+        # Build config matching DAG expected structure:
+        # conf: { gcs_path: "...", config: { batch_size: ..., ... } }
+        final_conf = {
+            "tenant_id": str(current_user.tenant_id)
+        }
+        
+        # If overrides provided, nest them under "config" key as DAG expects
+        if job_in.overrides:
+            final_conf["config"] = job_in.overrides
         
         # Determine strict GCS/GCP path key logic based on pipeline tags or ID if needed
         use_gcp_path = False  # Most new DAGs use gcs_path
