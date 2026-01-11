@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useRequireAuth } from '@/lib/auth-context';
@@ -161,7 +161,7 @@ function getPipelineIcon(pipeline: Pipeline) {
   return Sparkles;
 }
 
-export default function NewJobPage() {
+function NewJobContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedPipelineId = searchParams.get('pipeline');
@@ -924,5 +924,21 @@ export default function NewJobPage() {
         </Card>
       </div>
     </AppLayout>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+    </div>
+  );
+}
+
+export default function NewJobPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <NewJobContent />
+    </Suspense>
   );
 }

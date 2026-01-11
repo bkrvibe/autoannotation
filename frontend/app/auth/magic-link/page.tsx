@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
-export default function MagicLinkVerifyPage() {
+function MagicLinkVerifyContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [error, setError] = useState('');
   const router = useRouter();
@@ -91,5 +91,28 @@ export default function MagicLinkVerifyPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-8 bg-background">
+      <div className="w-full max-w-sm space-y-6 text-center">
+        <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-semibold text-foreground">Loading...</h2>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function MagicLinkVerifyPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <MagicLinkVerifyContent />
+    </Suspense>
   );
 }

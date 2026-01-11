@@ -13,7 +13,7 @@ This guide walks you through deploying AutoAnnotate UI on a GCP instance with HT
     │               │   │              Port 80/443                        │   │
     ▼               │   │                                                 │   │
 ┌───────────┐       │   │  airflow.caliperai.ai ──────► localhost:8080    │   │
-│ DNS       │       │   │  autoannotate.caliperai.ai ─► localhost:3000    │   │
+│ DNS       │       │   │  autolabel.caliperai.ai ─► localhost:3000    │   │
 │ Records   │───────┼──►│  groundtruth.caliperai.ai ──► localhost:4000    │   │
 └───────────┘       │   │                                                 │   │
                     │   └─────────────────────────────────────────────────┘   │
@@ -58,13 +58,15 @@ Or find it in GCP Console → Compute Engine → VM instances → External IP
 Go to your DNS provider (Google Cloud DNS, Cloudflare, etc.) and add:
 
 | Type | Name | Value | TTL |
-|------|------|-------|-----|
+|------|------|-------|----- |
 | A | autoannotate | `<VM_EXTERNAL_IP>` | 300 |
 | A | groundtruth | `<VM_EXTERNAL_IP>` | 300 |
+| A | airflow | `<VM_EXTERNAL_IP>` | 300 |
 
 **Example:** If your VM IP is `35.123.45.67`:
-- `autoannotate.caliperai.ai` → `35.123.45.67`
+- `autolabel.caliperai.ai` → `35.123.45.67`
 - `groundtruth.caliperai.ai` → `35.123.45.67`
+- `airflow.caliperai.ai` → `35.123.45.67`
 
 ### 1.3 Verify DNS Propagation
 
@@ -72,11 +74,12 @@ Wait 5-10 minutes, then verify:
 
 ```bash
 # From any terminal
-nslookup autoannotate.caliperai.ai
+nslookup autolabel.caliperai.ai
 nslookup groundtruth.caliperai.ai
+nslookup airflow.caliperai.ai
 ```
 
-Both should return your VM's IP address.
+All three should return your VM's IP address.
 
 ---
 
@@ -162,7 +165,7 @@ certbot --version
 ### 5.1 Create Nginx Config for AutoAnnotate
 
 ```bash
-sudo nano /etc/nginx/sites-available/autoannotate.caliperai.ai
+sudo nano /etc/nginx/sites-available/autolabel.caliperai.ai
 ```
 
 Paste this configuration:
@@ -171,7 +174,7 @@ Paste this configuration:
 # AutoAnnotate - Frontend + Backend API
 server {
     listen 80;
-    server_name autoannotate.caliperai.ai;
+    server_name autolabel.caliperai.ai;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -243,12 +246,54 @@ server {
 }
 ```
 
-### 5.3 Enable the Sites
+### 5.3 Create Nginx Config for Airflow
+
+```bash
+sudo nano /etc/nginx/sites-available/airflow.caliperai.ai
+```
+
+Paste this configuration:
+
+```nginx
+# Airflow Web UI
+server {
+    listen 80;
+    server_name airflow.caliperai.ai;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+        proxy_send_timeout 300;
+        
+        # Airflow may have larger responses
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+    }
+}
+```
+
+### 5.4 Enable the Sites
 
 ```bash
 # Create symbolic links to enable sites
-sudo ln -s /etc/nginx/sites-available/autoannotate.caliperai.ai /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/autolabel.caliperai.ai /etc/nginx/sites-enabled/
 sudo ln -s /etc/nginx/sites-available/groundtruth.caliperai.ai /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/airflow.caliperai.ai /etc/nginx/sites-enabled/
 
 # Test Nginx configuration
 sudo nginx -t
@@ -270,7 +315,7 @@ nginx: configuration file /etc/nginx/nginx.conf test is successful
 ### 6.1 Run Certbot
 
 ```bash
-sudo certbot --nginx -d autoannotate.caliperai.ai -d groundtruth.caliperai.ai
+sudo certbot --nginx -d autolabel.caliperai.ai -d groundtruth.caliperai.ai -d airflow.caliperai.ai
 ```
 
 Certbot will:
@@ -298,7 +343,7 @@ sudo certbot renew --dry-run
 ### 6.4 Test HTTPS
 
 Open in browser:
-- https://autoannotate.caliperai.ai
+- https://autolabel.caliperai.ai
 - https://groundtruth.caliperai.ai
 
 Both should show a secure lock icon (though they'll show errors until services are running).
@@ -392,10 +437,10 @@ SQLALCHEMY_DATABASE_URI="postgresql://user:password@localhost:5432/autoannotatio
 # SQLALCHEMY_DATABASE_URI="sqlite:///./autoann.db"
 
 # CORS - Production domain
-BACKEND_CORS_ORIGINS=https://autoannotate.caliperai.ai
+BACKEND_CORS_ORIGINS=https://autolabel.caliperai.ai
 
 # Frontend URL (for email links)
-FRONTEND_URL="https://autoannotate.caliperai.ai"
+FRONTEND_URL="https://autolabel.caliperai.ai"
 
 # Airflow
 AIRFLOW_BASE_URL="https://airflow.caliperai.ai"
@@ -432,7 +477,7 @@ nano /home/administrator/autoann-orchestrator/frontend/.env.local
 ```
 
 ```env
-NEXT_PUBLIC_API_URL=https://autoannotate.caliperai.ai/api/v1
+NEXT_PUBLIC_API_URL=https://autolabel.caliperai.ai/api/v1
 ```
 
 Then rebuild the frontend:
@@ -553,12 +598,12 @@ curl http://127.0.0.1:8000/
 curl http://127.0.0.1:3000/
 
 # Test via Nginx (from server)
-curl -I https://autoannotate.caliperai.ai/
+curl -I https://autolabel.caliperai.ai/
 ```
 
 ### 11.3 Test in Browser
 
-1. Open https://autoannotate.caliperai.ai
+1. Open https://autolabel.caliperai.ai
 2. You should see the login page
 3. Try logging in with your credentials
 
@@ -656,7 +701,7 @@ pm2 restart all
 nano /home/administrator/autoann-orchestrator/backend/.env
 
 # Ensure this is set:
-BACKEND_CORS_ORIGINS=https://autoannotate.caliperai.ai
+BACKEND_CORS_ORIGINS=https://autolabel.caliperai.ai
 
 # Restart backend
 pm2 restart autoannotate-backend
@@ -699,8 +744,8 @@ The backend automatically sets `secure=True` for HTTPS (production). Ensure you'
 
 | Component | Port | URL |
 |-----------|------|-----|
-| AutoAnnotate Frontend | 3000 | https://autoannotate.caliperai.ai |
-| AutoAnnotate Backend | 8000 | https://autoannotate.caliperai.ai/api/v1 |
+| AutoAnnotate Frontend | 3000 | https://autolabel.caliperai.ai |
+| AutoAnnotate Backend | 8000 | https://autolabel.caliperai.ai/api/v1 |
 | Ground Truth UI | 4000 | https://groundtruth.caliperai.ai |
 | Airflow | 8080 | https://airflow.caliperai.ai |
 

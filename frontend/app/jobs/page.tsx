@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useRequireAuth } from '@/lib/auth-context';
@@ -40,7 +40,7 @@ const statusFilters = [
   { key: 'failed', label: 'Failed' },
 ];
 
-export default function JobsPage() {
+function JobsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, loading: authLoading } = useRequireAuth();
@@ -305,5 +305,21 @@ export default function JobsPage() {
         </Card>
       </div>
     </AppLayout>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+    </div>
+  );
+}
+
+export default function JobsPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <JobsContent />
+    </Suspense>
   );
 }

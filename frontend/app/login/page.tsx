@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, CheckCircle2, Zap, Shield, ArrowRight, Mail, KeyRound } from 'lucide-react';
@@ -16,13 +17,14 @@ const features = [
 
 type AuthMode = 'password' | 'magic-link';
 
-export default function LoginPage() {
+function LoginContent() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('password');
   const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -32,7 +34,7 @@ export default function LoginPage() {
     setLoading(true);
     
     try {
-      await api.auth.login(email, password);
+      await login(email, password);
       // Redirect to original destination or dashboard
       const redirect = searchParams.get('redirect') || '/dashboard';
       router.push(redirect);
@@ -320,5 +322,24 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-8 bg-background">
+      <div className="text-center space-y-4">
+        <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <LoginContent />
+    </Suspense>
   );
 }
