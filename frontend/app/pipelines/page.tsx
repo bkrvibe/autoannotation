@@ -16,7 +16,10 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
-  Route
+  Route,
+  CheckCircle2,
+  Clock,
+  XCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -25,6 +28,18 @@ interface Pipeline {
   display_name: string;
   description: string;
   tags: string[];
+}
+
+interface Job {
+  id: number;
+  pipeline_id: string;
+  status: string;
+}
+
+interface JobCounts {
+  completed: number;
+  running: number;
+  failed: number;
 }
 
 // Pipeline categorization and display names
@@ -86,25 +101,40 @@ export default function PipelinesPage() {
   const router = useRouter();
   const { isAuthenticated, loading: authLoading } = useRequireAuth();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchPipelines();
+      fetchData();
     }
   }, [isAuthenticated]);
 
-  const fetchPipelines = async () => {
+  const fetchData = async () => {
     try {
-      const data = await api.pipelines.list();
-      setPipelines(data);
+      const [pipelinesData, jobsData] = await Promise.all([
+        api.pipelines.list(),
+        api.jobs.list()
+      ]);
+      setPipelines(pipelinesData);
+      setJobs(jobsData);
     } catch (err) {
       console.error(err);
       setError('Failed to load pipelines');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Calculate job counts for a pipeline
+  const getJobCounts = (pipelineId: string): JobCounts => {
+    const pipelineJobs = jobs.filter(j => j.pipeline_id === pipelineId);
+    return {
+      completed: pipelineJobs.filter(j => j.status.toLowerCase() === 'success').length,
+      running: pipelineJobs.filter(j => ['running', 'queued'].includes(j.status.toLowerCase())).length,
+      failed: pipelineJobs.filter(j => j.status.toLowerCase() === 'failed').length
+    };
   };
 
   const handleStartAnnotating = (pipelineId: string) => {
@@ -150,9 +180,15 @@ export default function PipelinesPage() {
   const renderPipelineCard = (pipeline: Pipeline) => {
     const Icon = getPipelineIcon(pipeline.id);
     const info = getPipelineDisplayInfo(pipeline);
+    const counts = getJobCounts(pipeline.id);
+    const totalJobs = counts.completed + counts.running + counts.failed;
 
     return (
-      <Card key={pipeline.id} className="hover:border-primary/50 transition-colors">
+      <Card 
+        key={pipeline.id} 
+        className="hover:border-primary/50 transition-colors cursor-pointer"
+        onClick={() => router.push(`/jobs?pipeline=${pipeline.id}`)}
+      >
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
@@ -173,21 +209,30 @@ export default function PipelinesPage() {
             {info.description}
           </p>
           
-          {pipeline.tags && pipeline.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-4">
-              {pipeline.tags.map((tag) => (
-                <span 
-                  key={tag} 
-                  className="px-2 py-0.5 rounded-full bg-secondary text-xs text-muted-foreground"
-                >
-                  {tag}
-                </span>
-              ))}
+          {/* Job Statistics */}
+          <div className="flex items-center gap-4 mb-4 text-sm">
+            <div className="flex items-center gap-1.5 text-green-600">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{counts.completed}</span>
             </div>
-          )}
+            <div className="flex items-center gap-1.5 text-blue-600">
+              <Clock className="h-4 w-4" />
+              <span>{counts.running}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-red-600">
+              <XCircle className="h-4 w-4" />
+              <span>{counts.failed}</span>
+            </div>
+            <span className="text-muted-foreground ml-auto">
+              {totalJobs} total job{totalJobs !== 1 ? 's' : ''}
+            </span>
+          </div>
           
           <Button 
-            onClick={() => handleStartAnnotating(pipeline.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleStartAnnotating(pipeline.id);
+            }}
             className="w-full"
           >
             <Play className="mr-2 h-4 w-4" />

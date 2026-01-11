@@ -1,30 +1,30 @@
-"""Email service using SendGrid."""
+"""Email service using Postmark."""
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class EmailService:
-    """SendGrid email service for transactional emails."""
+    """Postmark email service for transactional emails."""
     
     def __init__(self):
-        self.api_key = settings.SENDGRID_API_KEY
-        self.from_email = settings.SENDGRID_FROM_EMAIL
-        self.from_name = settings.SENDGRID_FROM_NAME
+        self.server_token = settings.POSTMARK_SERVER_TOKEN
+        self.from_email = settings.EMAIL_FROM_ADDRESS
+        self.from_name = settings.EMAIL_FROM_NAME
         self.frontend_url = settings.FRONTEND_URL
         self._client = None
     
     @property
     def client(self):
-        """Lazy-load SendGrid client."""
-        if self._client is None and self.api_key:
+        """Lazy-load Postmark client."""
+        if self._client is None and self.server_token:
             try:
-                from sendgrid import SendGridAPIClient
-                self._client = SendGridAPIClient(self.api_key)
+                from postmarker.core import PostmarkClient
+                self._client = PostmarkClient(server_token=self.server_token)
             except ImportError:
-                logger.warning("SendGrid not installed. Email sending disabled.")
+                logger.warning("Postmark not installed. Run: pip install postmarker")
         return self._client
     
     def _send_email(
@@ -35,37 +35,32 @@ class EmailService:
         text_content: Optional[str] = None
     ) -> bool:
         """
-        Send an email via SendGrid.
+        Send an email via Postmark.
         
         Returns True if successful, False otherwise.
         """
         if not self.client:
-            logger.warning(f"Email not sent (no client): {subject} -> {to_email}")
-            # In development, log the email content
-            logger.info(f"Email content:\n{text_content or html_content}")
+            logger.warning(f"Email not sent (no client configured): {subject} -> {to_email}")
+            # In development, log the email content for debugging
+            logger.info(f"--- EMAIL PREVIEW ---")
+            logger.info(f"To: {to_email}")
+            logger.info(f"Subject: {subject}")
+            logger.info(f"Content:\n{text_content or html_content[:500]}...")
+            logger.info(f"--- END EMAIL PREVIEW ---")
             return False
         
         try:
-            from sendgrid.helpers.mail import Mail, Email, To, Content
-            
-            message = Mail(
-                from_email=Email(self.from_email, self.from_name),
-                to_emails=To(to_email),
-                subject=subject,
-                html_content=html_content,
+            response = self.client.emails.send(
+                From=f"{self.from_name} <{self.from_email}>",
+                To=to_email,
+                Subject=subject,
+                HtmlBody=html_content,
+                TextBody=text_content,
+                MessageStream="outbound"  # Use transactional stream
             )
             
-            if text_content:
-                message.add_content(Content("text/plain", text_content))
-            
-            response = self.client.send(message)
-            
-            if response.status_code in (200, 201, 202):
-                logger.info(f"Email sent successfully: {subject} -> {to_email}")
-                return True
-            else:
-                logger.error(f"Email send failed: {response.status_code} - {response.body}")
-                return False
+            logger.info(f"Email sent successfully: {subject} -> {to_email} (MessageID: {response.get('MessageID')})")
+            return True
                 
         except Exception as e:
             logger.error(f"Email send error: {e}")

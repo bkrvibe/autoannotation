@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useRequireAuth } from '@/lib/auth-context';
 import { AppLayout } from '@/components/layout';
@@ -13,11 +13,10 @@ import {
   Search, 
   Loader2,
   Filter,
-  MoreHorizontal,
   ArrowUpDown,
   Download,
-  Trash2,
-  Eye
+  Eye,
+  X
 } from 'lucide-react';
 import { formatRelativeTime, cn } from '@/lib/utils';
 
@@ -28,6 +27,9 @@ interface Job {
   status: string;
   created_at: string;
   airflow_run_id: string;
+  result_artifacts?: {
+    output_uri?: string;
+  };
 }
 
 const statusFilters = [
@@ -40,11 +42,21 @@ const statusFilters = [
 
 export default function JobsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isAuthenticated, loading: authLoading } = useRequireAuth();
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [pipelineFilter, setPipelineFilter] = useState<string | null>(null);
+
+  // Read pipeline filter from URL
+  useEffect(() => {
+    const pipeline = searchParams.get('pipeline');
+    if (pipeline) {
+      setPipelineFilter(pipeline);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -87,9 +99,16 @@ export default function JobsPage() {
         matchesStatus = job.status.toLowerCase() === statusFilter;
       }
     }
+
+    const matchesPipeline = !pipelineFilter || job.pipeline_id === pipelineFilter;
     
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesPipeline;
   });
+
+  const clearPipelineFilter = () => {
+    setPipelineFilter(null);
+    router.push('/jobs');
+  };
 
   if (loading) {
     return (
@@ -107,6 +126,23 @@ export default function JobsPage() {
   return (
     <AppLayout title="Jobs" description="Manage annotation jobs">
       <div className="space-y-6">
+        {/* Pipeline Filter Banner */}
+        {pipelineFilter && (
+          <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg border border-primary/20">
+            <span className="text-sm text-foreground">
+              Showing jobs for: <span className="font-medium">{pipelineFilter}</span>
+            </span>
+            <Button 
+              variant="ghost" 
+              size="icon-sm" 
+              onClick={clearPipelineFilter}
+              className="ml-auto"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
         {/* Toolbar */}
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -236,6 +272,7 @@ export default function JobsPage() {
                             <Button 
                               variant="ghost" 
                               size="icon-sm"
+                              title="View Details"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 router.push(`/jobs/${job.id}`);
@@ -243,20 +280,19 @@ export default function JobsPage() {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon-sm"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon-sm"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
+                            {job.result_artifacts?.output_uri && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon-sm"
+                                title="Copy Output Path"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(job.result_artifacts!.output_uri!);
+                                }}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>

@@ -55,10 +55,10 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     
-    # Email (SendGrid)
-    SENDGRID_API_KEY: Optional[str] = None
-    SENDGRID_FROM_EMAIL: str = "noreply@caliperai.ai"
-    SENDGRID_FROM_NAME: str = "CaliperAI Auto-Annotation"
+    # Email (Postmark)
+    POSTMARK_SERVER_TOKEN: Optional[str] = None
+    EMAIL_FROM_ADDRESS: str = "noreply@caliperai.ai"
+    EMAIL_FROM_NAME: str = "CaliperAI Auto-Annotation"
     
     # Rate Limiting
     RATE_LIMIT_LOGIN_PER_MINUTE: int = 5

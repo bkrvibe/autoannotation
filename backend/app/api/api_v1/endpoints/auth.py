@@ -69,11 +69,13 @@ def create_session(
     db.refresh(session)
     
     # Set HttpOnly cookie
+    # Only set Secure flag in production (when not localhost)
+    is_localhost = settings.FRONTEND_URL.startswith("http://localhost")
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=session_token,
         httponly=True,
-        secure=True,  # Only send over HTTPS
+        secure=not is_localhost,  # Only send over HTTPS in production
         samesite="lax",
         max_age=settings.SESSION_ABSOLUTE_EXPIRE_DAYS * 24 * 60 * 60,
         path="/",

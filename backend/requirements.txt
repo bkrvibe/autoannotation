@@ -15,4 +15,4 @@ google-cloud-storage==2.14.0
 google-cloud-secret-manager==2.18.0
 requests==2.31.0
 PyYAML==6.0.1
-sendgrid==6.11.0
+postmarker==1.0

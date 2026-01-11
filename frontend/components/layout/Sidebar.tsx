@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 import {
   LayoutDashboard,
   Briefcase,
@@ -10,7 +12,6 @@ import {
   FolderOpen,
   HelpCircle,
   BookOpen,
-  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -21,13 +22,35 @@ const navigation = [
 ];
 
 const resources = [
-  { name: "Documentation", href: "#", icon: BookOpen, external: true },
-  { name: "API Reference", href: "#", icon: ExternalLink, external: true },
-  { name: "Support", href: "#", icon: HelpCircle, external: true },
+  { name: "Documentation", href: "/docs/getting-started", icon: BookOpen, external: false },
+  { name: "Support", href: "mailto:support@caliperdata.ai", icon: HelpCircle, external: true },
 ];
+
+interface JobStats {
+  total: number;
+  completed: number;
+}
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [stats, setStats] = useState<JobStats>({ total: 0, completed: 0 });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const jobs = await api.jobs.list();
+        setStats({
+          total: jobs.length,
+          completed: jobs.filter((j: { status: string }) => j.status.toLowerCase() === 'success').length
+        });
+      } catch {
+        // Silently fail - user may not be authenticated
+      }
+    };
+    fetchStats();
+  }, [pathname]); // Refetch when route changes
+
+  const completionPercent = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
 
   return (
     <div className="flex flex-col h-full w-60 bg-[hsl(var(--sidebar))] border-r border-[hsl(var(--sidebar-border))]">
@@ -84,38 +107,49 @@ export function Sidebar() {
           </h4>
           <div className="space-y-1">
             {resources.map((item) => (
-              <a
-                key={item.name}
-                href={item.href}
-                target={item.external ? "_blank" : undefined}
-                rel={item.external ? "noopener noreferrer" : undefined}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[hsl(var(--sidebar-muted))] hover:text-foreground hover:bg-secondary/50 transition-all duration-150"
-              >
-                <item.icon className="h-4 w-4" />
-                <span>{item.name}</span>
-                {item.external && <ExternalLink className="h-3 w-3 ml-auto opacity-50" />}
-              </a>
+              item.external ? (
+                <a
+                  key={item.name}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[hsl(var(--sidebar-muted))] hover:text-foreground hover:bg-secondary/50 transition-all duration-150"
+                >
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.name}</span>
+                </a>
+              ) : (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[hsl(var(--sidebar-muted))] hover:text-foreground hover:bg-secondary/50 transition-all duration-150"
+                >
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.name}</span>
+                </Link>
+              )
             ))}
           </div>
         </div>
       </nav>
 
-      {/* Workspace Info */}
+      {/* Workspace Stats */}
       <div className="p-4 mx-3 mb-3 rounded-lg bg-secondary/30 border border-border/50">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-foreground">Workspace</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary font-medium">
-            Enterprise
-          </span>
+          <span className="text-xs font-medium text-foreground">Job Completion</span>
         </div>
-        <p className="text-xs text-muted-foreground">Caliper AI</p>
         <div className="mt-2 flex items-center gap-2">
           <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
-            <div className="h-full w-[65%] rounded-full bg-gradient-to-r from-violet-500 to-purple-500" />
+            <div 
+              className="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-500 transition-all duration-300" 
+              style={{ width: `${completionPercent}%` }}
+            />
           </div>
-          <span className="text-[10px] text-muted-foreground">65%</span>
+          <span className="text-[10px] text-muted-foreground">{completionPercent}%</span>
         </div>
-        <p className="text-[10px] text-muted-foreground mt-1">847 / 1,000 jobs</p>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          {stats.completed} completed / {stats.total} total jobs
+        </p>
       </div>
     </div>
   );
