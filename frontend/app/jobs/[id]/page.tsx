@@ -235,14 +235,24 @@ export default function JobDetailPage() {
             </CardHeader>
             <CardContent>
                {(() => {
-                 // Extract user-relevant config fields
+                 // User-relevant config fields to display
                  const userFields = ['batch_size', 'box_threshold', 'text_threshold', 'nms_iou_thresh', 'classes_to_detect'];
-                 const config = job.config?.config || job.config || {};
                  
-                 // Get entries that match user fields
-                 const displayEntries = Object.entries(config).filter(
-                   ([key]) => userFields.includes(key)
-                 );
+                 // Handle multiple config structures:
+                 // 1. job.config.config.* (new nested structure)
+                 // 2. job.config.* (old flat structure)
+                 const nestedConfig = job.config?.config || {};
+                 const flatConfig = job.config || {};
+                 
+                 // Collect values from both, preferring nested
+                 const displayEntries: Array<[string, any]> = [];
+                 
+                 userFields.forEach(field => {
+                   const value = nestedConfig[field] ?? flatConfig[field];
+                   if (value !== undefined && value !== null) {
+                     displayEntries.push([field, value]);
+                   }
+                 });
                  
                  if (displayEntries.length === 0) {
                    return <p className="text-sm text-muted-foreground">Using default configuration</p>;

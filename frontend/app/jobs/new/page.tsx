@@ -174,6 +174,8 @@ export default function NewJobPage() {
   // Form State
   const [inputUri, setInputUri] = useState('');
   const [config, setConfig] = useState<any>({});
+  const [defaultConfig, setDefaultConfig] = useState<any>({}); // Track defaults to compare
+  const [userModifiedKeys, setUserModifiedKeys] = useState<Set<string>>(new Set()); // Track which keys user changed
   
   // Loading/Error
   const [loading, setLoading] = useState(false);
@@ -213,8 +215,11 @@ export default function NewJobPage() {
 
   const handlePipelineSelect = (pipeline: Pipeline) => {
     setSelectedPipeline(pipeline);
-    // Load default config from backend (will be enhanced with YAML configs)
-    setConfig(pipeline.conf_defaults || {});
+    // Load default config from backend
+    const defaults = pipeline.conf_defaults || {};
+    setConfig(defaults);
+    setDefaultConfig(defaults); // Store defaults to compare later
+    setUserModifiedKeys(new Set()); // Reset user modifications
   };
 
   // Separate pipelines into 2D and 3D
@@ -740,7 +745,7 @@ export default function NewJobPage() {
                             return current ?? defaultValue;
                           };
                           
-                          // Set value in nested config
+                          // Set value in nested config and track modification
                           const setNestedValue = (newValue: number) => {
                             const newConfig = JSON.parse(JSON.stringify(config));
                             let current = newConfig;
@@ -752,6 +757,9 @@ export default function NewJobPage() {
                             }
                             current[keyParts[keyParts.length - 1]] = newValue;
                             setConfig(newConfig);
+                            
+                            // Track this key as user-modified
+                            setUserModifiedKeys(prev => new Set(prev).add(key));
                           };
                           
                           return (
@@ -834,7 +842,7 @@ export default function NewJobPage() {
                           <div>
                             <p className="text-xs text-muted-foreground uppercase tracking-wider">Configuration</p>
                             <p className="text-sm text-muted-foreground">
-                              {Object.keys(config).length > 0 ? `${Object.keys(config).length} parameter(s) configured` : 'Using defaults'}
+                              {userModifiedKeys.size > 0 ? `${userModifiedKeys.size} parameter(s) customized` : 'Using defaults'}
                             </p>
                           </div>
                         </div>
@@ -842,29 +850,29 @@ export default function NewJobPage() {
                           Edit
                         </Button>
                       </div>
-                      {Object.keys(config).length > 0 && (
+                      {userModifiedKeys.size > 0 && selectedPipeline?.conf_schema?.threshold_fields && (
                         <div className="grid grid-cols-2 gap-3 bg-secondary/30 rounded-lg p-4">
-                          {Object.entries(config).map(([key, value]) => {
-                            // Flatten nested config for display
-                            const displayEntries: Array<{key: string, value: any}> = [];
-                            const flatten = (obj: any, prefix = '') => {
-                              if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
-                                Object.entries(obj).forEach(([k, v]) => {
-                                  flatten(v, prefix ? `${prefix}.${k}` : k);
-                                });
-                              } else {
-                                displayEntries.push({ key: prefix, value: obj });
+                          {Array.from(userModifiedKeys).map((key) => {
+                            const keyParts = key.split('.');
+                            const fieldName = keyParts[keyParts.length - 1];
+                            const displayName = fieldName
+                              .replace(/_/g, ' ')
+                              .replace(/\b\w/g, l => l.toUpperCase());
+                            
+                            // Get current value from config
+                            let currentValue: any = config;
+                            for (const part of keyParts) {
+                              if (currentValue && typeof currentValue === 'object') {
+                                currentValue = currentValue[part];
                               }
-                            };
-                            flatten(value, key);
-                            return displayEntries.map(({ key: k, value: v }) => (
-                              <div key={k} className="flex justify-between items-center text-sm">
-                                <span className="text-muted-foreground capitalize">
-                                  {k.split('.').pop()?.replace(/_/g, ' ')}
-                                </span>
-                                <span className="font-mono text-foreground">{String(v)}</span>
+                            }
+                            
+                            return (
+                              <div key={key} className="flex justify-between items-center text-sm">
+                                <span className="text-muted-foreground">{displayName}</span>
+                                <span className="font-mono text-foreground">{String(currentValue)}</span>
                               </div>
-                            ));
+                            );
                           })}
                         </div>
                       )}

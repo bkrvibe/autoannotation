@@ -54,12 +54,18 @@ CONF_BASE_DIR = Path(__file__).parent.parent.parent.parent.parent.parent / "auto
 
 
 def _load_yaml_config(dag_id: str) -> Dict[str, Any]:
-    """Load YAML config for a DAG and extract threshold fields."""
+    """Load YAML config for a DAG. All 2D DAGs use the detection config."""
     config_info = PIPELINE_CONFIG_MAP.get(dag_id)
-    if not config_info or not config_info.get('config_dir'):
+    if not config_info:
         return {}
     
-    config_path = CONF_BASE_DIR / config_info['config_dir'] / config_info['config_file']
+    # All 2D DAGs use the same detection config for user-facing settings
+    if config_info.get('category') == '2D':
+        config_path = CONF_BASE_DIR / '2d_detection' / 'config_multi_class_detection.yaml'
+    elif config_info.get('config_dir'):
+        config_path = CONF_BASE_DIR / config_info['config_dir'] / config_info['config_file']
+    else:
+        return {}
     
     if not config_path.exists():
         print(f"Config file not found: {config_path}")
