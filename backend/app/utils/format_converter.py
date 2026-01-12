@@ -109,14 +109,25 @@ def calipergt_to_coco(calipergt_data: Dict[str, Any]) -> Dict[str, Any]:
             elif ann_type == "polygon" and "points" in ann:
                 points = ann["points"]
                 
-                # Flatten points to COCO format: [x1, y1, x2, y2, ...]
-                segmentation = []
-                for point in points:
-                    segmentation.extend(point)
+                # Check if points are already flattened or nested
+                if isinstance(points, list) and len(points) > 0:
+                    if isinstance(points[0], (list, tuple)):
+                        # Points are nested: [[x1, y1], [x2, y2], ...]
+                        # Flatten to COCO format: [x1, y1, x2, y2, ...]
+                        segmentation = []
+                        for point in points:
+                            segmentation.extend(point)
+                        xs = [p[0] for p in points]
+                        ys = [p[1] for p in points]
+                    else:
+                        # Points are already flattened: [x1, y1, x2, y2, ...]
+                        segmentation = points
+                        xs = [points[i] for i in range(0, len(points), 2)]
+                        ys = [points[i] for i in range(1, len(points), 2)]
+                else:
+                    continue  # Skip if points are malformed
                 
                 # Calculate bbox from polygon
-                xs = [p[0] for p in points]
-                ys = [p[1] for p in points]
                 x_min, x_max = min(xs), max(xs)
                 y_min, y_max = min(ys), max(ys)
                 bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
