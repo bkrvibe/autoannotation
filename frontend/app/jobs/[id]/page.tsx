@@ -35,6 +35,7 @@ export default function JobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [downloadFormat, setDownloadFormat] = useState<'calipergt' | 'coco'>('calipergt');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -73,7 +74,7 @@ export default function JobDetailPage() {
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const response = await api.jobs.downloadArtifact(jobId);
+      const response = await api.jobs.downloadArtifact(jobId, downloadFormat);
       
       // Refresh job to get any updated artifacts
       await fetchJob();
@@ -84,15 +85,23 @@ export default function JobDetailPage() {
       const link = document.createElement('a');
       link.href = url;
       
-      // Get filename from Content-Disposition header or use default
-      const contentDisposition = response.headers['content-disposition'];
-      let filename = 'annotations.json';
-      if (contentDisposition) {
-        const match = contentDisposition.match(/filename=(.+)/);
-        if (match) {
-          filename = match[1];
-        }
+      // Generate filename with timestamp, dataset name, and model type
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const datasetName = job.input_uri.split('/').pop()?.split('.')[0] || 'dataset';
+      
+      // Determine model type from pipeline
+      let modelType = 'annotations';
+      if (job.pipeline_id.includes('tracking')) {
+        modelType = 'Tracking';
+      } else if (job.pipeline_id.includes('semantic_segmentation')) {
+        modelType = 'SemanticSegmentation';
+      } else if (job.pipeline_id.includes('segmentation')) {
+        modelType = 'InstanceSegmentation';
+      } else if (job.pipeline_id.includes('2d')) {
+        modelType = 'Detection';
       }
+      
+      const filename = `${timestamp}_${datasetName}_${modelType}_${downloadFormat}.json`;
       
       link.setAttribute('download', filename);
       document.body.appendChild(link);
@@ -146,11 +155,24 @@ export default function JobDetailPage() {
             Back to AutoAnnJobs
           </Button>
           
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
               <RefreshCw className={cn("mr-2 h-3.5 w-3.5", refreshing && "animate-spin")} />
               Refresh
             </Button>
+            
+            {/* Format Selector */}
+            {job.status === 'success' && (
+              <select
+                value={downloadFormat}
+                onChange={(e) => setDownloadFormat(e.target.value as 'calipergt' | 'coco')}
+                className="h-9 px-3 text-xs rounded-md border border-input bg-background"
+              >
+                <option value="calipergt">CaliperGT Format</option>
+                <option value="coco">COCO Format</option>
+              </select>
+            )}
+            
             <Button 
               size="sm"
               variant="default"

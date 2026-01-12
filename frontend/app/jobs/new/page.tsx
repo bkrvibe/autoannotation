@@ -728,7 +728,7 @@ function NewJobContent() {
                         {Object.entries(selectedPipeline.conf_schema.threshold_fields)
                           .filter(([key]) => {
                             const fieldName = key.split('.').pop()?.toLowerCase() || '';
-                            return fieldName === 'batch_size' || fieldName.includes('threshold');
+                            return fieldName === 'batch_size' || fieldName === 'box_threshold';
                           })
                           .map(([key, defaultValue]) => {
                           // Parse nested key path

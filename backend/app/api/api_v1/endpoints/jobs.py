@@ -1,5 +1,5 @@
 from typing import List, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.api import deps
 from app.schemas.job import Job, JobCreate
@@ -7,9 +7,11 @@ from app.models.job import Job as JobModel
 from app.models.tenant import Tenant
 from app.services.airflow import AirflowService, get_airflow_service_for_tenant
 from app.core.config import settings
+from app.utils.format_converter import calipergt_to_coco, get_pipeline_type
 import subprocess
 import tempfile
 import os
+import json
 
 router = APIRouter()
 
@@ -282,11 +284,13 @@ def get_job_tasks(
 @router.post("/{job_id}/download")
 def download_result_file(
     job_id: int,
+    format: str = Query("calipergt", regex="^(calipergt|coco)$"),
     db: Session = Depends(deps.get_db),
     current_user: deps.CurrentUser = Depends(deps.get_current_active_user),
 ):
     """
     Download the annotation result file from the Airflow worker via SCP.
+    Supports CaliperGT (default) and COCO formats.
     Automatically fetches XCom if not already available.
     """
     job = db.query(JobModel).filter(
@@ -355,8 +359,23 @@ def download_result_file(
                 print(f"SCP stderr: {result.stderr}")
                 raise HTTPException(status_code=500, detail=f"SCP failed: {result.stderr}")
             
+            # Read the file
             with open(local_path, 'rb') as f:
                 content = f.read()
+            
+            # Convert format if requested
+            if format == "coco":
+                try:
+                    # Parse CaliperGT JSON
+                    calipergt_data = json.loads(content)
+                    # Convert to COCO
+                    coco_data = calipergt_to_coco(calipergt_data)
+                    # Serialize back to JSON
+                    content = json.dumps(coco_data, indent=2).encode('utf-8')
+                    filename = filename.replace('.json', '_coco.json')
+                except Exception as e:
+                    print(f"Format conversion error: {e}")
+                    raise HTTPException(status_code=500, detail=f"Failed to convert to COCO format: {str(e)}")
             
             from fastapi.responses import Response
             mime_type = "application/json" if filename.endswith('.json') else "application/octet-stream"

@@ -171,8 +171,8 @@ export const api = {
         const response = await axiosInstance.get(`/jobs/${id}/tasks`);
         return response.data;
     },
-    downloadArtifact: async (id: string) => {
-        const response = await axiosInstance.post(`/jobs/${id}/download`, null, {
+    downloadArtifact: async (id: string, format: 'calipergt' | 'coco' = 'calipergt') => {
+        const response = await axiosInstance.post(`/jobs/${id}/download?format=${format}`, null, {
             responseType: 'blob'
         });
         return response;
