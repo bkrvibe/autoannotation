@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import {
@@ -54,21 +55,8 @@ export function Sidebar() {
 
   return (
     <div className="flex flex-col h-full w-60 bg-[hsl(var(--sidebar))] border-r border-[hsl(var(--sidebar-border))]">
-      {/* Logo */}
-      <div className="flex items-center h-16 px-5 border-b border-[hsl(var(--sidebar-border))]">
-        <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
-            <span className="text-white font-bold text-sm">C</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="font-semibold text-sm text-foreground">CaliperAI</span>
-            <span className="text-[10px] text-[hsl(var(--sidebar-muted))] uppercase tracking-wider">AutoAnn</span>
-          </div>
-        </Link>
-      </div>
-
       {/* New Job Button */}
-      <div className="px-4 py-4">
+      <div className="px-4 py-4 border-b border-[hsl(var(--sidebar-border))]">
         <Link href="/jobs/new">
           <Button className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
             <Plus className="h-4 w-4" />

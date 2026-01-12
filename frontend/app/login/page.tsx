@@ -100,7 +100,25 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex flex-col bg-background">
+      {/* Unified Banner with Logo - Seamless */}
+      <div className="">
+        <div className="flex items-center justify-between px-5 py-3">
+          <Link href="/" className="flex items-center">
+            <img 
+              src="/logo_light.png" 
+              alt="CaliperAI Logo" 
+              className="h-9 w-auto drop-shadow-lg"
+            />
+          </Link>
+          <p className="font-orbitron font-bold text-sm tracking-[0.25em] uppercase bg-gradient-to-r from-violet-400 via-purple-400 to-violet-400 bg-clip-text text-transparent drop-shadow-lg">
+            The Annotation Dark Factory
+          </p>
+          <div className="w-[180px]"></div> {/* Spacer for centering */}
+        </div>
+      </div>
+      
+      <div className="flex-1 flex">
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-violet-950 via-[#0c0a1a] to-[#0a0e1a] overflow-hidden">
         {/* Grid pattern overlay */}
@@ -116,19 +134,8 @@ function LoginContent() {
         <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-purple-500/20 rounded-full blur-[120px]" />
         
         <div className="relative z-10 flex flex-col justify-between p-12 w-full">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
-              <span className="text-white font-bold text-lg">C</span>
-            </div>
-            <div>
-              <span className="font-semibold text-white">CaliperAI</span>
-              <span className="text-violet-400 text-sm ml-2">AutoAnn</span>
-            </div>
-          </div>
-          
           {/* Main content */}
-          <div className="space-y-8">
+          <div className="space-y-8 mt-8">
             <div>
               <h1 className="text-4xl font-bold text-white leading-tight">
                 Enterprise Auto-Annotation
@@ -307,6 +314,7 @@ function LoginContent() {
             </form>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

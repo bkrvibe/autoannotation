@@ -45,7 +45,7 @@ export function Navbar({ title, description }: NavbarProps) {
   };
 
   return (
-    <header className="sticky top-0 z-40 flex items-center justify-between h-16 px-6 bg-background/80 backdrop-blur-xl border-b border-border">
+    <header className="sticky top-0 z-40 flex items-center justify-between h-16 px-6 bg-background/95 backdrop-blur-xl border-b border-border">
       <div className="flex flex-col">
         <h1 className="text-lg font-semibold text-foreground">{title || "Dashboard"}</h1>
         {description && (

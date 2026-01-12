@@ -49,18 +49,27 @@ export default function Home() {
         <div className="absolute bottom-1/4 left-1/3 w-72 h-72 bg-violet-500/10 rounded-full blur-3xl" />
       </div>
 
-      {/* Header */}
-      <header className="relative border-b border-white/5 bg-[#0a0e1a]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/25">
-              <Bot className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <span className="text-lg font-bold text-white">AutoAnn</span>
-              <span className="text-xs text-slate-500 block -mt-1">by Caliper AI</span>
-            </div>
+      {/* Header with Integrated Banner */}
+      <header className="relative sticky top-0 z-50 bg-[#0a0e1a]/95 backdrop-blur-xl">
+        {/* Unified Banner with Logo - Seamless */}
+        <div className="">
+          <div className="container mx-auto px-6 py-3 flex items-center justify-between">
+            <Link href="/" className="flex items-center">
+              <img 
+                src="/logo_light.png" 
+                alt="CaliperAI Logo" 
+                className="h-9 w-auto drop-shadow-lg"
+              />
+            </Link>
+            <p className="font-orbitron font-bold text-sm tracking-[0.25em] uppercase bg-gradient-to-r from-violet-400 via-purple-400 to-violet-400 bg-clip-text text-transparent drop-shadow-lg">
+              The Annotation Dark Factory
+            </p>
+            <div className="w-[180px]"></div> {/* Spacer for centering */}
           </div>
+        </div>
+        {/* Nav Bar */}
+        <div className="border-b border-white/5 bg-[#0a0e1a]/95 backdrop-blur-xl">
+          <div className="container mx-auto px-6 py-4 flex items-center justify-end">
           <div className="flex items-center gap-4">
             <Link href="/login">
               <Button variant="ghost" className="text-slate-300 hover:text-white">
@@ -73,6 +82,7 @@ export default function Home() {
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </Link>
+          </div>
           </div>
         </div>
       </header>
