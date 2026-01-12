@@ -18,6 +18,7 @@ import {
   ArrowRight,
   TrendingUp,
   Activity,
+  Plus,
   Play
 } from 'lucide-react';
 import { formatRelativeTime, cn } from '@/lib/utils';
@@ -81,7 +82,7 @@ export default function DashboardPage() {
 
   const stats = [
     { 
-      label: 'Total Jobs', 
+      label: 'Total AutoAnnJobs', 
       value: totalJobs, 
       subtext: 'All time',
       icon: Briefcase,
@@ -129,7 +130,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <AppLayout title="Dashboard" description="Monitor your annotation jobs">
+    <AppLayout title="Dashboard" description="Monitor your AutoAnnJobs">
       <div className="space-y-8">
         {/* Welcome Banner */}
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-violet-600/20 via-purple-600/20 to-fuchsia-600/20 border border-violet-500/20 p-6">
@@ -141,15 +142,15 @@ export default function DashboardPage() {
               </h2>
               <p className="mt-1 text-muted-foreground">
                 {runningJobs > 0 
-                  ? `You have ${runningJobs} job${runningJobs > 1 ? 's' : ''} currently running.`
-                  : 'Start a new annotation job to begin processing your data.'
+                  ? `You have ${runningJobs} AutoAnnJob${runningJobs > 1 ? 's' : ''} currently running.`
+                  : 'Start a new AutoAnnJob to begin processing your data.'
                 }
               </p>
             </div>
             <Link href="/jobs/new">
               <Button className="shadow-lg shadow-primary/20">
-                <Play className="h-4 w-4 mr-2" />
-                New Job
+                <Plus className="mr-2 h-4 w-4" />
+                New AutoAnnJob
               </Button>
             </Link>
           </div>

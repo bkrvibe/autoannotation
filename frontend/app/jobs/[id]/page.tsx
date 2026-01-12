@@ -136,30 +136,31 @@ export default function JobDetailPage() {
   const artifacts = job.result_artifacts;
 
   return (
-    <AppLayout title={`Job #${job.id}`} description="View job status and results">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <AppLayout title={`AutoAnnJob #${job.id}`} description="View job status and results">
+      <div className="max-w-6xl mx-auto space-y-4">
         
         {/* Header */}
         <div className="flex items-center justify-between">
           <Button variant="ghost" onClick={() => router.push('/jobs')} className="pl-0 hover:pl-2 transition-all">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Jobs
+            Back to AutoAnnJobs
           </Button>
           
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
-              <RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} />
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw className={cn("mr-2 h-3.5 w-3.5", refreshing && "animate-spin")} />
               Refresh
             </Button>
             <Button 
+              size="sm"
               variant="default"
               disabled={job.status !== 'success' || downloading} 
               onClick={handleDownload}
             >
               {downloading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Download className="mr-2 h-4 w-4" />
+                <Download className="mr-2 h-3.5 w-3.5" />
               )}
               {downloading ? 'Downloading...' : 'Download Results'}
             </Button>
@@ -167,60 +168,50 @@ export default function JobDetailPage() {
         </div>
 
         {/* Status Card */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="md:col-span-2">
-            <CardHeader>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Card className="lg:col-span-2">
+            <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div>
-                   <CardTitle className="text-lg">Execution Status</CardTitle>
-                   <CardDescription>Pipeline execution details</CardDescription>
+                   <CardTitle className="text-base">Execution Status</CardTitle>
+                   <CardDescription className="text-xs">Pipeline execution details</CardDescription>
                 </div>
                 <StatusBadge status={job.status} />
               </div>
             </CardHeader>
-            <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
+            <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Pipeline ID</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Pipeline ID</p>
                     <div className="flex items-center gap-2">
-                       <Box className="h-4 w-4 text-primary" />
-                       <span className="font-medium">{job.pipeline_id}</span>
+                       <Box className="h-3.5 w-3.5 text-primary" />
+                       <span className="text-sm font-medium">{job.pipeline_id}</span>
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Run ID</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Run ID</p>
                     <div className="flex items-center gap-2">
-                       <Activity className="h-4 w-4 text-muted-foreground" />
-                       <span className="font-mono text-sm">{job.airflow_run_id}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-lg bg-secondary/50 border border-border">
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Input Source</p>
-                    <div className="flex items-center gap-2 overflow-hidden">
-                       <HardDrive className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                       <code className="text-sm flex-1 truncate">{job.input_uri}</code>
+                       <Activity className="h-3.5 w-3.5 text-muted-foreground" />
+                       <span className="font-mono text-xs truncate">{job.airflow_run_id}</span>
                     </div>
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
                     <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Created At</p>
-                        <div className="flex items-center gap-2">
-                           <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                           <span className="text-sm">{new Date(job.created_at).toLocaleString()}</span>
+                        <p className="text-[10px] text-muted-foreground">Created At</p>
+                        <div className="flex items-center gap-1.5">
+                           <Calendar className="h-3 w-3 text-muted-foreground" />
+                           <span className="text-xs">{new Date(job.created_at).toLocaleString()}</span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">{formatRelativeTime(job.created_at)}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{formatRelativeTime(job.created_at)}</p>
                     </div>
                     {job.updated_at && (
                         <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Last Updated</p>
-                            <div className="flex items-center gap-2">
-                               <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                               <span className="text-sm">{new Date(job.updated_at).toLocaleString()}</span>
+                            <p className="text-[10px] text-muted-foreground">Last Updated</p>
+                            <div className="flex items-center gap-1.5">
+                               <Clock className="h-3 w-3 text-muted-foreground" />
+                               <span className="text-xs">{new Date(job.updated_at).toLocaleString()}</span>
                             </div>
                         </div>
                     )}
@@ -229,14 +220,14 @@ export default function JobDetailPage() {
           </Card>
 
           {/* Config Card */}
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle className="text-lg">Configuration</CardTitle>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Configuration</CardTitle>
             </CardHeader>
             <CardContent>
                {(() => {
-                 // User-relevant config fields to display
-                 const userFields = ['batch_size', 'box_threshold', 'text_threshold', 'nms_iou_thresh', 'classes_to_detect'];
+                 // Only show batch_size and threshold to users
+                 const userFields = ['batch_size', 'box_threshold'];
                  
                  // Handle multiple config structures:
                  // 1. job.config.config.* (new nested structure)
@@ -250,7 +241,9 @@ export default function JobDetailPage() {
                  userFields.forEach(field => {
                    const value = nestedConfig[field] ?? flatConfig[field];
                    if (value !== undefined && value !== null) {
-                     displayEntries.push([field, value]);
+                     // Rename box_threshold to just threshold for display
+                     const displayKey = field === 'box_threshold' ? 'threshold' : field;
+                     displayEntries.push([displayKey, value]);
                    }
                  });
                  
@@ -259,13 +252,13 @@ export default function JobDetailPage() {
                  }
                  
                  return (
-                   <div className="space-y-3">
+                   <div className="space-y-2">
                      {displayEntries.map(([key, value]) => (
-                       <div key={key} className="flex justify-between items-center py-2 border-b border-border last:border-0">
-                         <span className="text-sm text-muted-foreground capitalize">
+                       <div key={key} className="flex justify-between items-center py-1.5 border-b border-border last:border-0">
+                         <span className="text-xs text-muted-foreground capitalize">
                            {key.replace(/_/g, ' ')}
                          </span>
-                         <span className="text-sm font-mono text-foreground">
+                         <span className="text-xs font-mono text-foreground">
                            {Array.isArray(value) ? value.join(', ') : String(value)}
                          </span>
                        </div>
@@ -288,50 +281,28 @@ export default function JobDetailPage() {
               <CardDescription>Output from the annotation pipeline</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 gap-4">
                 {artifacts.num_frames && (
                   <div className="p-4 rounded-lg bg-secondary/50 border border-border text-center">
                     <Layers className="h-6 w-6 text-primary mx-auto mb-2" />
                     <p className="text-2xl font-bold">{artifacts.num_frames}</p>
-                    <p className="text-xs text-muted-foreground">Frames</p>
+                    <p className="text-xs text-muted-foreground">Frames Processed</p>
                   </div>
                 )}
                 {artifacts.num_annotations && (
                   <div className="p-4 rounded-lg bg-secondary/50 border border-border text-center">
                     <FileText className="h-6 w-6 text-primary mx-auto mb-2" />
                     <p className="text-2xl font-bold">{artifacts.num_annotations}</p>
-                    <p className="text-xs text-muted-foreground">Annotations</p>
+                    <p className="text-xs text-muted-foreground">Annotations Generated</p>
                   </div>
                 )}
               </div>
               
-              {artifacts.calipergt_file && (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Output File</p>
-                  <code className="block p-3 rounded-lg bg-[#0c0e14] text-sm font-mono border border-border break-all">
-                    {artifacts.calipergt_file}
-                  </code>
-                </div>
-              )}
-              
-              {artifacts.calipergt_output_dir && (
-                <div className="space-y-2 mt-4">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Output Directory</p>
-                  <code className="block p-3 rounded-lg bg-[#0c0e14] text-sm font-mono border border-border break-all">
-                    {artifacts.calipergt_output_dir}
-                  </code>
-                </div>
-              )}
-
-              {/* Show raw artifacts if they exist but don't match expected structure */}
-              {!artifacts.calipergt_file && !artifacts.num_frames && (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Raw Artifacts</p>
-                  <pre className="text-xs font-mono bg-[#0c0e14] p-4 rounded-lg overflow-auto max-h-[200px] border border-border">
-                    {JSON.stringify(artifacts, null, 2)}
-                  </pre>
-                </div>
-              )}
+              <div className="mt-4 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
+                <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+                <p className="text-sm font-medium text-foreground">Results Ready</p>
+                <p className="text-xs text-muted-foreground mt-1">Click &quot;Download Results&quot; to get your annotations</p>
+              </div>
             </CardContent>
           </Card>
         )}

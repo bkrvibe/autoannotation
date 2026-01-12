@@ -48,17 +48,17 @@ const PIPELINE_INFO: Record<string, { category: '2D' | '3D'; displayName: string
   'image_auto_annotation_2d': {
     category: '2D',
     displayName: '2D Object Detection',
-    description: 'Multi-class object detection using GroundingDINO with CLIP classification'
+    description: 'Detects: vehicle, pedestrian classes'
   },
   'image_auto_annotation_2d_segmentation': {
     category: '2D',
     displayName: '2D Instance Segmentation',
-    description: 'Instance segmentation using SAM2 with bounding box prompts'
+    description: 'Instance segmentation for detected objects with bounding box prompts'
   },
   'image_auto_annotation_2d_semantic_segmentation': {
     category: '2D',
     displayName: '2D Semantic Segmentation',
-    description: 'Semantic segmentation using Mask2Former/OneFormer on Cityscapes classes'
+    description: 'Segments: road, sidewalk, building, wall, fence, pole, traffic light, traffic sign, vegetation, terrain, sky, person, rider, car, truck, bus, train, motorcycle, bicycle'
   },
   'image_auto_annotation_2d_tracking': {
     category: '2D',
@@ -638,7 +638,7 @@ function NewJobContent() {
                     )}
 
                     {/* Upload Success */}
-                    {!isUploading && uploadedFileCount > 0 && inputUri && (
+                    {!isUploading && uploadedFileCount > 0 && (
                       <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                         <div className="flex items-center gap-2">
                           <CheckCircle2 className="h-5 w-5 text-emerald-500" />
@@ -649,52 +649,58 @@ function NewJobContent() {
                       </div>
                     )}
 
-                    <div className="relative flex items-center py-2">
-                      <div className="flex-grow border-t border-border"></div>
-                      <span className="flex-shrink-0 mx-4 text-xs text-muted-foreground uppercase">OR</span>
-                      <div className="flex-grow border-t border-border"></div>
-                    </div>
-
-
-                    {/* GCS Path Input */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">
-                        GCS Input Path
-                        </label>
-                        <div className="relative">
-                        <FolderInput className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                        <Input
-                            placeholder="gs://your-bucket/path/to/data/"
-                            value={inputUri}
-                            onChange={(e) => setInputUri(e.target.value)}
-                            className="pl-12 h-12 text-base font-mono"
-                        />
+                    {/* Only show GCS path input if no files uploaded */}
+                    {uploadedFileCount === 0 && (
+                      <>
+                        <div className="relative flex items-center py-2">
+                          <div className="flex-grow border-t border-border"></div>
+                          <span className="flex-shrink-0 mx-4 text-xs text-muted-foreground uppercase">OR</span>
+                          <div className="flex-grow border-t border-border"></div>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                        Enter the full path to your images, videos, or point cloud data
-                        </p>
-                    </div>
+
+                        {/* GCS Path Input */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">
+                            GCS Input Path
+                            </label>
+                            <div className="relative">
+                            <FolderInput className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                            <Input
+                                placeholder="gs://your-bucket/path/to/data/"
+                                value={inputUri}
+                                onChange={(e) => setInputUri(e.target.value)}
+                                className="pl-12 h-12 text-base font-mono"
+                            />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                            Enter the full path to your images, videos, or point cloud data
+                            </p>
+                        </div>
+                      </>
+                    )}
                   </div>
 
 
-                  {/* Quick Examples */}
-                  <div className="pt-4 border-t border-border">
-                    <p className="text-xs text-muted-foreground mb-2">Examples:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        'gs://data-sets-caliperai/images/',
-                        'gs://data-sets-caliperai/lidar/',
-                      ].map((example) => (
-                        <button
-                          key={example}
-                          onClick={() => setInputUri(example)}
-                          className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          {example}
-                        </button>
-                      ))}
+                  {/* Quick Examples - Only show if no files uploaded */}
+                  {uploadedFileCount === 0 && (
+                    <div className="pt-4 border-t border-border">
+                      <p className="text-xs text-muted-foreground mb-2">Examples:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          'gs://data-sets-caliperai/images/',
+                          'gs://data-sets-caliperai/lidar/',
+                        ].map((example) => (
+                          <button
+                            key={example}
+                            onClick={() => setInputUri(example)}
+                            className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {example}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             )}
@@ -719,13 +725,19 @@ function NewJobContent() {
                         Model Parameters
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {Object.entries(selectedPipeline.conf_schema.threshold_fields).map(([key, defaultValue]) => {
+                        {Object.entries(selectedPipeline.conf_schema.threshold_fields)
+                          .filter(([key]) => {
+                            const fieldName = key.split('.').pop()?.toLowerCase() || '';
+                            return fieldName === 'batch_size' || fieldName.includes('threshold');
+                          })
+                          .map(([key, defaultValue]) => {
                           // Parse nested key path
                           const keyParts = key.split('.');
                           const fieldName = keyParts[keyParts.length - 1];
                           const displayName = fieldName
                             .replace(/_/g, ' ')
-                            .replace(/\b\w/g, l => l.toUpperCase());
+                            .replace(/\b\w/g, l => l.toUpperCase())
+                            .replace('Box Threshold', 'Threshold');
                           
                           // Determine field type and constraints
                           const isBatchSize = fieldName.toLowerCase() === 'batch_size';
@@ -816,21 +828,23 @@ function NewJobContent() {
                       </Button>
                     </div>
                     
-                    {/* Input Path */}
-                    <div className="p-4 flex items-center justify-between bg-card">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                          <FolderInput className="h-5 w-5 text-blue-400" />
+                    {/* Input Path - Only show if GCS path */}
+                    {inputUri && inputUri.startsWith('gs://') && (
+                      <div className="p-4 flex items-center justify-between bg-card">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                            <FolderInput className="h-5 w-5 text-blue-400" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs text-muted-foreground uppercase tracking-wider">Input Path</p>
+                            <p className="font-mono text-sm text-foreground truncate max-w-md">{inputUri}</p>
+                          </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs text-muted-foreground uppercase tracking-wider">Input Path</p>
-                          <p className="font-mono text-sm text-foreground truncate max-w-md">{inputUri}</p>
-                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => setStep(2)}>
+                          Edit
+                        </Button>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={() => setStep(2)}>
-                        Edit
-                      </Button>
-                    </div>
+                    )}
                     
                     {/* Config */}
                     <div className="p-4 bg-card">

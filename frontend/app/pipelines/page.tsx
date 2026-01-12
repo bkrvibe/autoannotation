@@ -52,17 +52,17 @@ const PIPELINE_INFO: Record<string, { category: '2D' | '3D'; displayName: string
   'image_auto_annotation_2d': {
     category: '2D',
     displayName: '2D Object Detection',
-    description: 'Multi-class object detection using GroundingDINO with CLIP classification'
+    description: 'Detects: vehicle, pedestrian classes'
   },
   'image_auto_annotation_2d_segmentation': {
     category: '2D',
     displayName: '2D Instance Segmentation',
-    description: 'Instance segmentation using SAM2 with bounding box prompts'
+    description: 'Instance segmentation for detected objects with bounding box prompts'
   },
   'image_auto_annotation_2d_semantic_segmentation': {
     category: '2D',
     displayName: '2D Semantic Segmentation',
-    description: 'Semantic segmentation using Mask2Former/OneFormer on Cityscapes classes'
+    description: 'Segments: road, sidewalk, building, wall, fence, pole, traffic light, traffic sign, vegetation, terrain, sky, person, rider, car, truck, bus, train, motorcycle, bicycle'
   },
   'image_auto_annotation_2d_tracking': {
     category: '2D',

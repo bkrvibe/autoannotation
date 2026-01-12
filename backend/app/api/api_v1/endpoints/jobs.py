@@ -336,13 +336,15 @@ def download_result_file(
             
             print(f"Downloading {remote_path} from {AIRFLOW_SSH_HOST}...")
             
-            # Use gcloud compute scp
+            # Use gcloud compute scp with explicit account
+            # First try with the compute service account, then fall back to default
             result = subprocess.run(
                 [
                     "gcloud", "compute", "scp",
                     f"--zone={AIRFLOW_SSH_ZONE}",
                     f"{AIRFLOW_SSH_USER}@{AIRFLOW_SSH_HOST}:{remote_path}",
-                    local_path
+                    local_path,
+                    "--tunnel-through-iap"  # Use IAP tunneling which works with service accounts
                 ],
                 capture_output=True,
                 text=True,

@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Jobs", href: "/jobs", icon: Briefcase },
+  { name: "AutoAnnJobs", href: "/jobs", icon: Briefcase },
   { name: "Pipelines", href: "/pipelines", icon: FolderOpen },
 ];
 
@@ -60,7 +60,7 @@ export function Sidebar() {
         <Link href="/jobs/new">
           <Button className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
             <Plus className="h-4 w-4" />
-            New Annotation Job
+            New AutoAnnJob
           </Button>
         </Link>
       </div>
@@ -124,7 +124,7 @@ export function Sidebar() {
       {/* Workspace Stats */}
       <div className="p-4 mx-3 mb-3 rounded-lg bg-secondary/30 border border-border/50">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-foreground">Job Completion</span>
+          <span className="text-xs font-medium text-foreground">AutoAnnJob Completion</span>
         </div>
         <div className="mt-2 flex items-center gap-2">
           <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
@@ -136,7 +136,7 @@ export function Sidebar() {
           <span className="text-[10px] text-muted-foreground">{completionPercent}%</span>
         </div>
         <p className="text-[10px] text-muted-foreground mt-1">
-          {stats.completed} completed / {stats.total} total jobs
+          {stats.completed} completed / {stats.total} total
         </p>
       </div>
     </div>

@@ -112,11 +112,11 @@ function JobsContent() {
 
   if (loading) {
     return (
-      <AppLayout title="Jobs" description="Manage annotation jobs">
+      <AppLayout title="AutoAnnJobs" description="Manage your AutoAnnJobs">
         <div className="flex items-center justify-center h-[60vh]">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Loading jobs...</p>
+            <p className="text-sm text-muted-foreground">Loading AutoAnnJobs...</p>
           </div>
         </div>
       </AppLayout>
@@ -124,13 +124,13 @@ function JobsContent() {
   }
 
   return (
-    <AppLayout title="Jobs" description="Manage annotation jobs">
+    <AppLayout title="AutoAnnJobs" description="Manage your AutoAnnJobs">
       <div className="space-y-6">
         {/* Pipeline Filter Banner */}
         {pipelineFilter && (
           <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg border border-primary/20">
             <span className="text-sm text-foreground">
-              Showing jobs for: <span className="font-medium">{pipelineFilter}</span>
+              Showing AutoAnnJobs for: <span className="font-medium">{pipelineFilter}</span>
             </span>
             <Button 
               variant="ghost" 
