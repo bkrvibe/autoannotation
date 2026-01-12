@@ -7,7 +7,8 @@ module.exports = {
       args: 'app.main:app --host 127.0.0.1 --port 8000',
       interpreter: 'none',
       env: {
-        PATH: '/home/administrator/autoannotation/.venv/bin:' + process.env.PATH
+        PATH: '/home/administrator/autoannotation/.venv/bin:' + process.env.PATH,
+        GOOGLE_APPLICATION_CREDENTIALS: '/home/administrator/caliper-gt/keys/regal-hybrid-445815-n1-c8d2273aeac7.json'
       }
     },
     {

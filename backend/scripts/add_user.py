@@ -9,11 +9,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.db.base import Base  # Import all models
 from app.db.session import SessionLocal
 from app.models.user import User, UserStatus, UserRole
+from app.models.tenant import Tenant
+from app.models.user_tenant import UserTenant
 from app.core.security import get_password_hash
 
 
-def add_user(email: str, password: str, full_name: str = None, role: str = "annotation_runner"):
-    """Add a new user to the database."""
+def add_user(email: str, password: str, full_name: str = None, role: str = "annotation_runner", tenant_slug: str = "default"):
+    """Add a new user to the database and assign to a tenant."""
     db = SessionLocal()
     
     # Check if user already exists
@@ -30,6 +32,15 @@ def add_user(email: str, password: str, full_name: str = None, role: str = "anno
         db.close()
         return False
     
+    # Find tenant
+    tenant = db.query(Tenant).filter(Tenant.slug == tenant_slug).first()
+    if not tenant:
+        print(f"Error: Tenant '{tenant_slug}' not found!")
+        available = db.query(Tenant).all()
+        print(f"Available tenants: {[t.slug for t in available]}")
+        db.close()
+        return False
+    
     # Create new user
     user = User(
         email=email,
@@ -40,6 +51,17 @@ def add_user(email: str, password: str, full_name: str = None, role: str = "anno
     )
     
     db.add(user)
+    db.flush()  # Get user ID before creating tenant assignment
+    
+    # Create user-tenant mapping
+    user_tenant = UserTenant(
+        user_id=user.id,
+        tenant_id=tenant.id,
+        role_in_tenant=role,
+        is_default=True,
+    )
+    db.add(user_tenant)
+    
     db.commit()
     db.refresh(user)
     
@@ -49,6 +71,7 @@ def add_user(email: str, password: str, full_name: str = None, role: str = "anno
     print(f"  Name: {user.full_name}")
     print(f"  Role: {user.role}")
     print(f"  Status: {user.status}")
+    print(f"  Tenant: {tenant.name} ({tenant.slug})")
     
     db.close()
     return True
@@ -62,13 +85,66 @@ def list_users():
     print("\nCurrent users:")
     print("-" * 60)
     for u in users:
+        # Get tenant assignments
+        tenants = db.query(UserTenant).filter(UserTenant.user_id == u.id).all()
+        tenant_names = []
+        for ut in tenants:
+            t = db.query(Tenant).filter(Tenant.id == ut.tenant_id).first()
+            if t:
+                tenant_names.append(f"{t.name} ({t.slug})")
+        
         print(f"  Email: {u.email}")
         print(f"  Name: {u.full_name or '(not set)'}")
         print(f"  Role: {u.role}")
         print(f"  Status: {u.status}")
+        print(f"  Tenants: {', '.join(tenant_names) if tenant_names else '(none - user will see error!)'}")
         print("-" * 60)
     
     db.close()
+
+
+def assign_tenant(email: str, tenant_slug: str):
+    """Assign a user to a tenant."""
+    db = SessionLocal()
+    
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        print(f"Error: User with email '{email}' not found!")
+        db.close()
+        return False
+    
+    tenant = db.query(Tenant).filter(Tenant.slug == tenant_slug).first()
+    if not tenant:
+        print(f"Error: Tenant '{tenant_slug}' not found!")
+        available = db.query(Tenant).all()
+        print(f"Available tenants: {[t.slug for t in available]}")
+        db.close()
+        return False
+    
+    # Check if already assigned
+    existing = db.query(UserTenant).filter(
+        UserTenant.user_id == user.id,
+        UserTenant.tenant_id == tenant.id
+    ).first()
+    
+    if existing:
+        print(f"User '{email}' is already assigned to tenant '{tenant_slug}'")
+        db.close()
+        return True
+    
+    # Create assignment
+    user_tenant = UserTenant(
+        user_id=user.id,
+        tenant_id=tenant.id,
+        role_in_tenant=user.role,
+        is_default=True,
+    )
+    db.add(user_tenant)
+    db.commit()
+    
+    print(f"✓ User '{email}' assigned to tenant '{tenant.name}' ({tenant_slug})")
+    db.close()
+    return True
 
 
 def reset_password(email: str, new_password: str):
@@ -110,12 +186,14 @@ def delete_user(email: str):
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  Add user:       python add_user.py add <email> <password> [full_name] [role]")
-        print("  List users:     python add_user.py list")
-        print("  Reset password: python add_user.py reset-password <email> <new_password>")
-        print("  Delete user:    python add_user.py delete <email>")
+        print("  Add user:        python add_user.py add <email> <password> [full_name] [role]")
+        print("  List users:      python add_user.py list")
+        print("  Reset password:  python add_user.py reset-password <email> <new_password>")
+        print("  Assign tenant:   python add_user.py assign-tenant <email> [tenant_slug]")
+        print("  Delete user:     python add_user.py delete <email>")
         print("")
         print("Roles: annotation_runner, tenant_admin, ops, admin")
+        print("Default tenant: 'default'")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -134,6 +212,15 @@ if __name__ == "__main__":
         role = sys.argv[5] if len(sys.argv) > 5 else "annotation_runner"
         
         add_user(email, password, full_name, role)
+    elif command == "assign-tenant":
+        if len(sys.argv) < 3:
+            print("Error: Email is required")
+            print("Usage: python add_user.py assign-tenant <email> [tenant_slug]")
+            sys.exit(1)
+        
+        email = sys.argv[2]
+        tenant_slug = sys.argv[3] if len(sys.argv) > 3 else "default"
+        assign_tenant(email, tenant_slug)
     elif command == "reset-password":
         if len(sys.argv) < 4:
             print("Error: Email and new password are required")
@@ -157,5 +244,5 @@ if __name__ == "__main__":
             print("Cancelled.")
     else:
         print(f"Unknown command: {command}")
-        print("Use 'add', 'list', 'reset-password', or 'delete'")
+        print("Use 'add', 'list', 'assign-tenant', 'reset-password', or 'delete'")
         sys.exit(1)

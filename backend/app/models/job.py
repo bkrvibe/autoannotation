@@ -7,6 +7,7 @@ from app.db.types import GUID
 class Job(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(GUID(), ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False)
+    created_by_user_id = Column(GUID(), ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True)
     
     pipeline_id = Column(String, index=True)
     airflow_dag_id = Column(String)
@@ -23,3 +24,4 @@ class Job(Base):
     
     # Relationships
     tenant = relationship("Tenant", back_populates="jobs")
+    created_by = relationship("User", foreign_keys=[created_by_user_id])

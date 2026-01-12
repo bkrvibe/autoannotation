@@ -306,19 +306,6 @@ function LoginContent() {
               </Button>
             </form>
           )}
-          
-          {/* Demo credentials */}
-          <div className="pt-4 border-t border-border">
-            <p className="text-xs text-muted-foreground mb-2">Demo credentials:</p>
-            <div className="flex gap-2">
-              <code className="flex-1 px-3 py-2 rounded-lg bg-secondary text-xs font-mono text-muted-foreground">
-                admin@example.com
-              </code>
-              <code className="px-3 py-2 rounded-lg bg-secondary text-xs font-mono text-muted-foreground">
-                password
-              </code>
-            </div>
-          </div>
         </div>
       </div>
     </div>

@@ -98,9 +98,10 @@ def create_job(
             raise HTTPException(status_code=404, detail=f"Pipeline '{dag_id}' not found in Airflow")
         raise HTTPException(status_code=500, detail=f"Failed to trigger Airflow: {str(e)}")
 
-    # Save to DB with proper tenant_id
+    # Save to DB with proper tenant_id and user_id
     db_job = JobModel(
         tenant_id=current_user.tenant_id,
+        created_by_user_id=current_user.user_id,
         pipeline_id=dag_id,
         airflow_dag_id=dag_id,
         airflow_run_id=run_info["dag_run_id"],
@@ -181,11 +182,16 @@ def read_jobs(
 ):
     """
     Retrieve jobs for current tenant.
+    Admins and ops see all jobs, other users only see their own.
     """
-    # Query with tenant isolation
-    jobs = db.query(JobModel).filter(
-        JobModel.tenant_id == current_user.tenant_id
-    ).order_by(JobModel.created_at.desc()).offset(skip).limit(limit).all()
+    # Build query with tenant isolation
+    query = db.query(JobModel).filter(JobModel.tenant_id == current_user.tenant_id)
+    
+    # Non-admin users only see their own jobs
+    if current_user.role not in ["admin", "ops", "tenant_admin"]:
+        query = query.filter(JobModel.created_by_user_id == current_user.user_id)
+    
+    jobs = query.order_by(JobModel.created_at.desc()).offset(skip).limit(limit).all()
     
     # Get Airflow service for this tenant
     airflow_service = get_airflow_service_for_tenant(current_user.tenant)
