@@ -8,6 +8,7 @@ from app.models.tenant import Tenant
 from app.services.airflow import AirflowService, get_airflow_service_for_tenant
 from app.core.config import settings
 from app.utils.format_converter import calipergt_to_coco, get_pipeline_type
+from app.utils.lidar_preprocessing import preprocess_3d_data
 import subprocess
 import tempfile
 import os
@@ -71,32 +72,61 @@ def create_job(
     
     # Get Airflow service for this tenant
     airflow_service = get_airflow_service_for_tenant(current_user.tenant)
-    
+
     dag_id = job_in.pipeline_id
-    
+
+    # Check if this is a 3D pipeline that requires preprocessing
+    is_3d_pipeline = dag_id == 'auto_annotation_pipeline_dynamic'
+    actual_input_uri = job_in.input_uri
+    preprocessing_message = None
+
     try:
+        # Preprocess 3D data if needed
+        if is_3d_pipeline:
+            print(f"Preprocessing 3D data for pipeline {dag_id}...")
+            transformed_uri, was_transformed, message = preprocess_3d_data(
+                input_gcs_path=job_in.input_uri,
+                tenant_id=str(current_user.tenant_id),
+                job_id=None  # Job ID not available yet
+            )
+
+            if was_transformed:
+                print(f"Data transformed: {message}")
+                actual_input_uri = transformed_uri
+                preprocessing_message = message
+            else:
+                print(f"Data preprocessing result: {message}")
+
         # Build config matching DAG expected structure:
         # conf: { gcs_path: "...", config: { batch_size: ..., ... }, user_input_display: "..." }
         final_conf = {
             "tenant_id": str(current_user.tenant_id)
         }
-        
+
         # If overrides provided, nest them under "config" key as DAG expects
         if job_in.overrides:
             final_conf["config"] = job_in.overrides
-        
+
         # Preserve a user-visible input display if provided (e.g. local upload summary)
         if getattr(job_in, "input_display", None):
             final_conf["user_input_display"] = job_in.input_display
             # Also store original input separately for UI display
             final_conf["original_input"] = job_in.input_display
 
+        # Store preprocessing metadata
+        if preprocessing_message:
+            final_conf["preprocessing"] = {
+                "original_path": job_in.input_uri,
+                "transformed_path": actual_input_uri,
+                "message": preprocessing_message
+            }
+
         # Determine strict GCS/GCP path key logic based on pipeline tags or ID if needed
         use_gcp_path = False  # Most new DAGs use gcs_path
-        
+
         run_info = airflow_service.trigger_dag(
             dag_id=dag_id,
-            gcs_path=job_in.input_uri,
+            gcs_path=actual_input_uri,  # Use transformed URI if preprocessing occurred
             additional_conf=final_conf,
             use_gcp_path=use_gcp_path
         )
@@ -113,7 +143,7 @@ def create_job(
         pipeline_id=dag_id,
         airflow_dag_id=dag_id,
         airflow_run_id=run_info["dag_run_id"],
-        input_uri=job_in.input_uri,
+        input_uri=actual_input_uri,  # Store actual URI (transformed if preprocessing occurred)
         input_display=getattr(job_in, "input_display", None) or job_in.input_uri,  # Store user-provided path
         status=run_info["state"],
         config=final_conf
