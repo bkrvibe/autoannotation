@@ -183,6 +183,7 @@ function NewJobContent() {
   const [error, setError] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedFileCount, setUploadedFileCount] = useState(0);
+  const [uploadedDatasetName, setUploadedDatasetName] = useState(''); // Store dataset/folder name
   const [isUploading, setIsUploading] = useState(false);
   const [fileInputKey, setFileInputKey] = useState(Date.now()); // Key to reset file inputs
 
@@ -236,13 +237,22 @@ function NewJobContent() {
   const handleSubmit = async () => {
     setLoading(true);
     setError('');
-    try {
-      const payload = {
+      try {
+      const payload: any = {
         pipeline_id: selectedPipeline?.id,
         input_uri: inputUri,
         overrides: config
       };
-      
+
+      // If user uploaded files locally, provide a friendly display string
+      if (uploadedFileCount > 0) {
+        const datasetPart = uploadedDatasetName ? `${uploadedDatasetName} - ` : '';
+        payload.input_display = `${datasetPart}Local upload (${uploadedFileCount} file${uploadedFileCount > 1 ? 's' : ''})`;
+      } else if (inputUri) {
+        // If user typed/pasted a GCS path, show that
+        payload.input_display = inputUri;
+      }
+
       await api.jobs.create(payload);
       router.push('/jobs');
     } catch (err: any) {
@@ -516,7 +526,8 @@ function NewJobContent() {
                                    setUploadProgress(0);
                                    setError('');
                                    setUploadedFileCount(0);
-                                   
+                                   setUploadedDatasetName('');
+
                                    if (filesToUpload.length === 1) {
                                      // Single file - use original endpoint
                                      const file = filesToUpload[0];
@@ -525,6 +536,9 @@ function NewJobContent() {
                                      });
                                      setInputUri(res.gcs_path);
                                      setUploadedFileCount(1);
+                                     // Extract filename without extension as dataset name
+                                     const fileName = file.name.replace(/\.(zip|jpg|jpeg|png|gif|bmp)$/i, '');
+                                     setUploadedDatasetName(fileName);
                                    } else {
                                      // Multiple files
                                      const res = await api.utils.uploadMultiple(filesToUpload, (progress) => {
@@ -532,6 +546,12 @@ function NewJobContent() {
                                      });
                                      setInputUri(res.gcs_path);
                                      setUploadedFileCount(res.file_count);
+                                     // Try to get folder name from first file if available
+                                     const firstFile = filesToUpload[0] as any;
+                                     if (firstFile.webkitRelativePath) {
+                                       const folderName = firstFile.webkitRelativePath.split('/')[0];
+                                       setUploadedDatasetName(folderName);
+                                     }
                                    }
                                  } catch (err: any) {
                                    console.error(err);
@@ -581,12 +601,19 @@ function NewJobContent() {
                                    setUploadProgress(0);
                                    setError('');
                                    setUploadedFileCount(0);
-                                   
+                                   setUploadedDatasetName('');
+
                                    const res = await api.utils.uploadMultiple(filesToUpload, (progress) => {
                                       setUploadProgress(progress);
                                    });
                                    setInputUri(res.gcs_path);
                                    setUploadedFileCount(res.file_count);
+                                   // Extract folder name from first file's path
+                                   const firstFile = filesToUpload[0] as any;
+                                   if (firstFile.webkitRelativePath) {
+                                     const folderName = firstFile.webkitRelativePath.split('/')[0];
+                                     setUploadedDatasetName(folderName);
+                                   }
                                  } catch (err: any) {
                                    console.error(err);
                                    setError(err.response?.data?.detail || "Failed to upload folder");
@@ -828,16 +855,22 @@ function NewJobContent() {
                       </Button>
                     </div>
                     
-                    {/* Input Path - Only show if GCS path */}
-                    {inputUri && inputUri.startsWith('gs://') && (
+                    {/* Input Path */}
+                    {inputUri && (
                       <div className="p-4 flex items-center justify-between bg-card">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
                             <FolderInput className="h-5 w-5 text-blue-400" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs text-muted-foreground uppercase tracking-wider">Input Path</p>
-                            <p className="font-mono text-sm text-foreground truncate max-w-md">{inputUri}</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wider">Input Data</p>
+                            <p className="text-sm text-foreground truncate max-w-md">
+                              {uploadedFileCount > 0 ? (
+                                uploadedDatasetName ? `${uploadedDatasetName} - Local upload (${uploadedFileCount} file${uploadedFileCount > 1 ? 's' : ''})` : `Local upload (${uploadedFileCount} file${uploadedFileCount > 1 ? 's' : ''})`
+                              ) : (
+                                <span className="font-mono">{inputUri}</span>
+                              )}
+                            </p>
                           </div>
                         </div>
                         <Button variant="ghost" size="sm" onClick={() => setStep(2)}>

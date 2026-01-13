@@ -30,6 +30,7 @@ interface Job {
   result_artifacts?: {
     output_uri?: string;
   };
+  config?: any;
 }
 
 const statusFilters = [
@@ -46,6 +47,7 @@ function JobsContent() {
   const { isAuthenticated, loading: authLoading } = useRequireAuth();
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [pipelinesMap, setPipelinesMap] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [pipelineFilter, setPipelineFilter] = useState<string | null>(null);
@@ -61,8 +63,22 @@ function JobsContent() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchJobs();
+      fetchPipelines();
     }
   }, [isAuthenticated]);
+
+  const fetchPipelines = async () => {
+    try {
+      const data = await api.pipelines.list();
+      const map: Record<string, string> = {};
+      data.forEach((p: any) => {
+        map[p.id] = p.display_name || p.display_name || p.id;
+      });
+      setPipelinesMap(map);
+    } catch (err) {
+      // ignore
+    }
+  };
 
   const fetchJobs = async () => {
     try {
@@ -253,13 +269,13 @@ function JobsContent() {
                         <td className="px-4 py-4">
                           <div className="flex flex-col">
                             <span className="text-sm font-medium text-foreground truncate max-w-[200px]">
-                              {job.pipeline_id}
+                              {pipelinesMap[job.pipeline_id] || job.pipeline_id}
                             </span>
                           </div>
                         </td>
                         <td className="px-4 py-4">
-                          <code className="text-xs text-muted-foreground font-mono truncate max-w-[250px] block">
-                            {job.input_uri}
+                            <code className="text-xs text-muted-foreground font-mono truncate max-w-[250px] block">
+                            { (job.config?.original_input && job.config.original_input !== job.input_uri) ? job.config.original_input : (job.config?.user_input_display ?? job.input_uri) }
                           </code>
                         </td>
                         <td className="px-4 py-4">

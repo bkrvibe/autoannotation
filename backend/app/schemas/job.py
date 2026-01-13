@@ -6,6 +6,7 @@ from datetime import datetime
 class JobBase(BaseModel):
     pipeline_id: str
     input_uri: str
+    input_display: Optional[str] = None
     overrides: Dict[str, Any] = {}
 
 class JobCreate(JobBase):
@@ -25,6 +26,7 @@ class Job(JobBase):
     created_at: datetime
     config: Optional[Dict[str, Any]] = None
     result_artifacts: Optional[Dict[str, Any]] = None
+    input_display: Optional[str] = None  # User-provided input path for display
 
     class Config:
         from_attributes = True

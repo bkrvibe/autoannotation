@@ -218,6 +218,19 @@ export default function JobDetailPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Input Data Path */}
+                <div className="space-y-1 pt-2 border-t border-border">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Input Data</p>
+                  <div className="flex items-center gap-2">
+                     <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
+                     <span className="text-sm truncate">
+                       {(job.config?.original_input && job.config.original_input !== job.input_uri)
+                         ? job.config.original_input
+                         : (job.config?.user_input_display ?? job.input_display ?? job.input_uri)}
+                     </span>
+                  </div>
+                </div>
                 
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
                     <div className="space-y-1">

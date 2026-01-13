@@ -107,6 +107,19 @@ python scripts/add_user.py reset-password <email> <new_password>
 python scripts/add_user.py reset-password john@example.com newpassword123
 ```
 
+**Important Notes:**
+- If password contains special characters like `!`, wrap it in **single quotes**:
+  ```bash
+  python scripts/add_user.py reset-password user@example.com 'Pass!word123'
+  ```
+- Or disable history expansion temporarily:
+  ```bash
+  set +H
+  python scripts/add_user.py reset-password user@example.com Pass!word123
+  set -H
+  ```
+- Characters that need quoting: `! $ & * ( ) { } [ ] ; < > ? | \ " '`
+
 ---
 
 ## Troubleshooting

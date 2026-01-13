@@ -152,8 +152,8 @@ export const api = {
   },
   jobs: {
     create: async (data: any) => {
-        const response = await axiosInstance.post('/jobs/', data);
-        return response.data;
+      const response = await axiosInstance.post('/jobs/', data);
+      return response.data;
     },
     list: async () => {
         const response = await axiosInstance.get('/jobs/');

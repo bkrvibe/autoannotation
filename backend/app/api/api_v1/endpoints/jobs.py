@@ -76,7 +76,7 @@ def create_job(
     
     try:
         # Build config matching DAG expected structure:
-        # conf: { gcs_path: "...", config: { batch_size: ..., ... } }
+        # conf: { gcs_path: "...", config: { batch_size: ..., ... }, user_input_display: "..." }
         final_conf = {
             "tenant_id": str(current_user.tenant_id)
         }
@@ -85,6 +85,12 @@ def create_job(
         if job_in.overrides:
             final_conf["config"] = job_in.overrides
         
+        # Preserve a user-visible input display if provided (e.g. local upload summary)
+        if getattr(job_in, "input_display", None):
+            final_conf["user_input_display"] = job_in.input_display
+            # Also store original input separately for UI display
+            final_conf["original_input"] = job_in.input_display
+
         # Determine strict GCS/GCP path key logic based on pipeline tags or ID if needed
         use_gcp_path = False  # Most new DAGs use gcs_path
         
@@ -108,6 +114,7 @@ def create_job(
         airflow_dag_id=dag_id,
         airflow_run_id=run_info["dag_run_id"],
         input_uri=job_in.input_uri,
+        input_display=getattr(job_in, "input_display", None) or job_in.input_uri,  # Store user-provided path
         status=run_info["state"],
         config=final_conf
     )

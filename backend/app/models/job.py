@@ -13,7 +13,8 @@ class Job(Base):
     airflow_dag_id = Column(String)
     airflow_run_id = Column(String, nullable=True)
     
-    input_uri = Column(String)
+    input_uri = Column(String)  # GCS path used by Airflow
+    input_display = Column(String, nullable=True)  # User-provided input path for display
     status = Column(String, default="queued") # queued, running, success, failed
     
     config = Column(JSON)
