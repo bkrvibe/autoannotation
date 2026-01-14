@@ -1,13 +1,14 @@
-from typing import List, Any, Optional
+from typing import List
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from app.api import deps
 from app.schemas.job import Job, JobCreate
 from app.models.job import Job as JobModel
 from app.models.tenant import Tenant
-from app.services.airflow import AirflowService, get_airflow_service_for_tenant
-from app.core.config import settings
-from app.utils.format_converter import calipergt_to_coco, get_pipeline_type
+from app.services.airflow import get_airflow_service_for_tenant
+from app.utils.format_converter import calipergt_to_coco
 from app.utils.lidar_preprocessing import preprocess_3d_data
 import subprocess
 import tempfile
@@ -191,20 +192,30 @@ def read_job(
         except Exception as e:
             print(f"Error syncing status: {e}")
     
-    # If job is successful, try to fetch XCom result (try multiple task IDs)
+    # If job is successful, try to fetch XCom result (try multiple task IDs and keys)
     if job.status == "success" and not job.result_artifacts:
-        task_ids_to_try = ["convert_to_calipergt", "convert_to_calipergt_task", "final_task"]
-        for task_id in task_ids_to_try:
+        # List of (task_id, xcom_key) to try
+        xcom_sources = [
+            ("convert_to_calipergt", "return_value"),
+            ("convert_to_calipergt_task", "return_value"),
+            ("convert_annotations", "annotations"),  # 3D pipeline uses 'annotations' key
+            ("final_task", "return_value"),
+        ]
+        for task_id, xcom_key in xcom_sources:
             try:
                 xcom_result = airflow_service.get_xcom_value(
                     job.airflow_dag_id,
                     job.airflow_run_id,
                     task_id,
-                    "return_value"
+                    xcom_key
                 )
                 if xcom_result:
-                    print(f"Found XCom from task: {task_id}")
-                    job.result_artifacts = xcom_result
+                    print(f"Found XCom from task: {task_id}, key: {xcom_key}")
+                    # For 3D pipeline, wrap the direct JSON in result_artifacts format
+                    if task_id == "convert_annotations" and isinstance(xcom_result, dict) and "tracks" in xcom_result:
+                        job.result_artifacts = {"annotations_data": xcom_result}
+                    else:
+                        job.result_artifacts = xcom_result
                     db.add(job)
                     db.commit()
                     db.refresh(job)
@@ -344,82 +355,113 @@ def download_result_file(
         raise HTTPException(status_code=400, detail=f"Job is not complete (status: {job.status})")
     
     airflow_service = get_airflow_service_for_tenant(current_user.tenant)
-    
+
     # If no artifacts, try to fetch XCom first
     if not job.result_artifacts:
-        task_ids_to_try = ["convert_to_calipergt", "convert_to_calipergt_task", "final_task"]
-        for task_id in task_ids_to_try:
+        xcom_sources = [
+            ("convert_to_calipergt", "return_value"),
+            ("convert_to_calipergt_task", "return_value"),
+            ("convert_annotations", "annotations"),  # 3D pipeline uses 'annotations' key
+            ("final_task", "return_value"),
+        ]
+        for task_id, xcom_key in xcom_sources:
             try:
                 xcom_result = airflow_service.get_xcom_value(
                     job.airflow_dag_id,
                     job.airflow_run_id,
                     task_id,
-                    "return_value"
+                    xcom_key
                 )
                 if xcom_result:
-                    job.result_artifacts = xcom_result
+                    # For 3D pipeline, wrap the direct JSON in result_artifacts format
+                    if task_id == "convert_annotations" and isinstance(xcom_result, dict) and "tracks" in xcom_result:
+                        job.result_artifacts = {"annotations_data": xcom_result}
+                    else:
+                        job.result_artifacts = xcom_result
                     db.add(job)
                     db.commit()
                     db.refresh(job)
                     break
             except Exception as e:
                 print(f"Error fetching XCom from {task_id}: {e}")
-    
-    # Check if we have the file path now
+
+    # Check if we have artifacts now
     if not job.result_artifacts:
         raise HTTPException(status_code=404, detail="No result artifacts found. The pipeline may not have produced output.")
-    
+
+    # Handle 3D pipeline - direct JSON data in annotations_data
+    if "annotations_data" in job.result_artifacts:
+        annotations = job.result_artifacts["annotations_data"]
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        filename = f"annotations_3d_{job.id}_{timestamp}.json"
+
+        content = json.dumps(annotations, indent=2).encode('utf-8')
+
+        # Convert format if requested
+        if format == "coco":
+            try:
+                coco_data = calipergt_to_coco(annotations)
+                content = json.dumps(coco_data, indent=2).encode('utf-8')
+                filename = filename.replace('.json', '_coco.json')
+            except Exception as e:
+                print(f"Format conversion error: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to convert to COCO format: {str(e)}")
+
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+
+    # Handle 2D pipeline - file path requiring SCP
     remote_path = job.result_artifacts.get("calipergt_file")
     if not remote_path:
         raise HTTPException(status_code=404, detail="No annotation file path in results")
-    
+
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
             filename = os.path.basename(remote_path)
             local_path = os.path.join(temp_dir, filename)
-            
+
             print(f"Downloading {remote_path} from {AIRFLOW_SSH_HOST}...")
-            
+
             # Use gcloud compute scp with explicit account
-            # First try with the compute service account, then fall back to default
             result = subprocess.run(
                 [
                     "gcloud", "compute", "scp",
                     f"--zone={AIRFLOW_SSH_ZONE}",
                     f"{AIRFLOW_SSH_USER}@{AIRFLOW_SSH_HOST}:{remote_path}",
                     local_path,
-                    "--tunnel-through-iap"  # Use IAP tunneling which works with service accounts
+                    "--tunnel-through-iap"
                 ],
                 capture_output=True,
                 text=True,
                 timeout=120
             )
-            
+
             if result.returncode != 0:
                 print(f"SCP stderr: {result.stderr}")
                 raise HTTPException(status_code=500, detail=f"SCP failed: {result.stderr}")
-            
+
             # Read the file
             with open(local_path, 'rb') as f:
                 content = f.read()
-            
+
             # Convert format if requested
             if format == "coco":
                 try:
-                    # Parse CaliperGT JSON
                     calipergt_data = json.loads(content)
-                    # Convert to COCO
                     coco_data = calipergt_to_coco(calipergt_data)
-                    # Serialize back to JSON
                     content = json.dumps(coco_data, indent=2).encode('utf-8')
                     filename = filename.replace('.json', '_coco.json')
                 except Exception as e:
                     print(f"Format conversion error: {e}")
                     raise HTTPException(status_code=500, detail=f"Failed to convert to COCO format: {str(e)}")
-            
-            from fastapi.responses import Response
+
             mime_type = "application/json" if filename.endswith('.json') else "application/octet-stream"
-            
+
             return Response(
                 content=content,
                 media_type=mime_type,
