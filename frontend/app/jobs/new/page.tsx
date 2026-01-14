@@ -221,6 +221,8 @@ function NewJobContent() {
     setConfig(defaults);
     setDefaultConfig(defaults); // Store defaults to compare later
     setUserModifiedKeys(new Set()); // Reset user modifications
+    // Auto-advance to next step after model selection
+    setStep(2);
   };
 
   // Separate pipelines into 2D and 3D
@@ -939,9 +941,13 @@ function NewJobContent() {
                 {step === 1 ? 'Cancel' : 'Back'}
               </Button>
               
-              {step < 4 ? (
-                <Button 
-                  onClick={() => setStep(step + 1)} 
+              {step === 1 ? (
+                <div className="text-sm text-muted-foreground">
+                  Select a model to continue
+                </div>
+              ) : step < 4 ? (
+                <Button
+                  onClick={() => setStep(step + 1)}
                   disabled={!canProceed()}
                 >
                   Continue

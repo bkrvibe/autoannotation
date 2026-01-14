@@ -52,11 +52,15 @@ function JobsContent() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [pipelineFilter, setPipelineFilter] = useState<string | null>(null);
 
-  // Read pipeline filter from URL
+  // Read pipeline and status filter from URL
   useEffect(() => {
     const pipeline = searchParams.get('pipeline');
+    const status = searchParams.get('status');
     if (pipeline) {
       setPipelineFilter(pipeline);
+    }
+    if (status) {
+      setStatusFilter(status);
     }
   }, [searchParams]);
 
@@ -65,6 +69,17 @@ function JobsContent() {
       fetchJobs();
       fetchPipelines();
     }
+  }, [isAuthenticated]);
+
+  // Auto-refresh job status every 5 seconds
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(() => {
+      fetchJobs();
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [isAuthenticated]);
 
   const fetchPipelines = async () => {

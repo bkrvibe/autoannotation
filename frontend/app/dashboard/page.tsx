@@ -45,6 +45,17 @@ export default function DashboardPage() {
     }
   }, [isAuthenticated]);
 
+  // Auto-refresh job status every 5 seconds
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(() => {
+      fetchJobs();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
   const fetchJobs = async () => {
     try {
       const data = await api.jobs.list();
@@ -81,38 +92,42 @@ export default function DashboardPage() {
   ).slice(0, 5);
 
   const stats = [
-    { 
-      label: 'Total AutoAnnJobs', 
-      value: totalJobs, 
+    {
+      label: 'Total AutoAnnJobs',
+      value: totalJobs,
       subtext: 'All time',
       icon: Briefcase,
       color: 'text-violet-400',
       bgColor: 'bg-violet-500/10',
+      href: '/jobs',
     },
-    { 
-      label: 'Running', 
-      value: runningJobs, 
+    {
+      label: 'Running',
+      value: runningJobs,
       subtext: 'In progress',
       icon: Activity,
       color: 'text-blue-400',
       bgColor: 'bg-blue-500/10',
       pulse: runningJobs > 0,
+      href: '/jobs?status=running',
     },
-    { 
-      label: 'Completed', 
-      value: successfulJobs, 
+    {
+      label: 'Completed',
+      value: successfulJobs,
       subtext: `${successRate}% success rate`,
       icon: CheckCircle2,
       color: 'text-emerald-400',
       bgColor: 'bg-emerald-500/10',
+      href: '/jobs?status=success',
     },
-    { 
-      label: 'Failed', 
-      value: failedJobs, 
+    {
+      label: 'Failed',
+      value: failedJobs,
       subtext: 'Need attention',
       icon: XCircle,
       color: 'text-red-400',
       bgColor: 'bg-red-500/10',
+      href: '/jobs?status=failed',
     },
   ];
 
@@ -159,20 +174,22 @@ export default function DashboardPage() {
         {/* Stats Grid */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {stats.map((stat) => (
-            <Card key={stat.label} className="relative overflow-hidden">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{stat.label}</p>
-                    <p className="mt-2 text-3xl font-semibold text-foreground">{stat.value}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{stat.subtext}</p>
+            <Link key={stat.label} href={stat.href}>
+              <Card className="relative overflow-hidden transition-all hover:shadow-md hover:border-primary/30 cursor-pointer">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{stat.label}</p>
+                      <p className="mt-2 text-3xl font-semibold text-foreground">{stat.value}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{stat.subtext}</p>
+                    </div>
+                    <div className={cn("p-2.5 rounded-lg", stat.bgColor)}>
+                      <stat.icon className={cn("h-5 w-5", stat.color, stat.pulse && "animate-pulse")} />
+                    </div>
                   </div>
-                  <div className={cn("p-2.5 rounded-lg", stat.bgColor)}>
-                    <stat.icon className={cn("h-5 w-5", stat.color, stat.pulse && "animate-pulse")} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
 
