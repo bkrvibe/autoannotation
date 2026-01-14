@@ -746,7 +746,7 @@ function NewJobContent() {
 
                 <div className="space-y-6">
                   {/* Configurable Fields - Easy Edit */}
-                  {selectedPipeline?.conf_schema?.threshold_fields && 
+                  {selectedPipeline?.conf_schema?.threshold_fields &&
                    Object.keys(selectedPipeline.conf_schema.threshold_fields).length > 0 ? (
                     <div className="space-y-4">
                       <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
@@ -754,26 +754,24 @@ function NewJobContent() {
                         Model Parameters
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Numeric fields (batch_size, box_threshold) */}
                         {Object.entries(selectedPipeline.conf_schema.threshold_fields)
                           .filter(([key]) => {
                             const fieldName = key.split('.').pop()?.toLowerCase() || '';
                             return fieldName === 'batch_size' || fieldName === 'box_threshold';
                           })
                           .map(([key, defaultValue]) => {
-                          // Parse nested key path
                           const keyParts = key.split('.');
                           const fieldName = keyParts[keyParts.length - 1];
                           const displayName = fieldName
                             .replace(/_/g, ' ')
                             .replace(/\b\w/g, l => l.toUpperCase())
                             .replace('Box Threshold', 'Threshold');
-                          
-                          // Determine field type and constraints
+
                           const isBatchSize = fieldName.toLowerCase() === 'batch_size';
-                          const isThreshold = fieldName.toLowerCase().includes('threshold') || 
+                          const isThreshold = fieldName.toLowerCase().includes('threshold') ||
                                               fieldName.toLowerCase().includes('confidence');
-                          
-                          // Get current value from config
+
                           const getCurrentValue = (): number => {
                             let current: any = config;
                             for (const part of keyParts) {
@@ -785,8 +783,7 @@ function NewJobContent() {
                             }
                             return current ?? defaultValue;
                           };
-                          
-                          // Set value in nested config and track modification
+
                           const setNestedValue = (newValue: number) => {
                             const newConfig = JSON.parse(JSON.stringify(config));
                             let current = newConfig;
@@ -798,11 +795,9 @@ function NewJobContent() {
                             }
                             current[keyParts[keyParts.length - 1]] = newValue;
                             setConfig(newConfig);
-                            
-                            // Track this key as user-modified
                             setUserModifiedKeys(prev => new Set(prev).add(key));
                           };
-                          
+
                           return (
                             <ConfigNumberInput
                               key={key}
@@ -812,6 +807,62 @@ function NewJobContent() {
                               isBatchSize={isBatchSize}
                               isThreshold={isThreshold}
                             />
+                          );
+                        })}
+
+                        {/* LiDAR Frame select (for 3D pipeline) */}
+                        {Object.entries(selectedPipeline.conf_schema.threshold_fields)
+                          .filter(([key]) => {
+                            const fieldName = key.split('.').pop()?.toLowerCase() || '';
+                            return fieldName === 'lidar_frame';
+                          })
+                          .map(([key, defaultValue]) => {
+                          const keyParts = key.split('.');
+
+                          const getCurrentValue = (): string => {
+                            let current: any = config;
+                            for (const part of keyParts) {
+                              if (current && typeof current === 'object') {
+                                current = current[part];
+                              } else {
+                                return defaultValue as string;
+                              }
+                            }
+                            return current ?? defaultValue;
+                          };
+
+                          const setNestedValue = (newValue: string) => {
+                            const newConfig = JSON.parse(JSON.stringify(config));
+                            let current = newConfig;
+                            for (let i = 0; i < keyParts.length - 1; i++) {
+                              if (!current[keyParts[i]]) {
+                                current[keyParts[i]] = {};
+                              }
+                              current = current[keyParts[i]];
+                            }
+                            current[keyParts[keyParts.length - 1]] = newValue;
+                            setConfig(newConfig);
+                            setUserModifiedKeys(prev => new Set(prev).add(key));
+                          };
+
+                          return (
+                            <div key={key} className="p-4 rounded-lg border border-border bg-card">
+                              <label className="text-sm font-medium text-foreground block mb-2">
+                                LiDAR Frame
+                              </label>
+                              <select
+                                value={getCurrentValue()}
+                                onChange={(e) => setNestedValue(e.target.value)}
+                                className="w-full h-10 px-3 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                              >
+                                <option value="local">Local (default)</option>
+                                <option value="vehicle">Vehicle</option>
+                                <option value="world">World</option>
+                              </select>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Coordinate system for point cloud data
+                              </p>
+                            </div>
                           );
                         })}
                       </div>

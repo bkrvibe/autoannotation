@@ -98,13 +98,16 @@ def create_job(
                 print(f"Data preprocessing result: {message}")
 
         # Build config matching DAG expected structure:
-        # conf: { gcs_path: "...", config: { batch_size: ..., ... }, user_input_display: "..." }
+        # conf: { gcs_path: "...", config: { batch_size: ..., ... }, user_input_display: "...", lidar_frame: "..." }
         final_conf = {
             "tenant_id": str(current_user.tenant_id)
         }
 
         # If overrides provided, nest them under "config" key as DAG expects
         if job_in.overrides:
+            # Extract lidar_frame to top level for 3D DAG (accessed via conf.get('lidar_frame'))
+            if 'lidar_frame' in job_in.overrides:
+                final_conf["lidar_frame"] = job_in.overrides["lidar_frame"]
             final_conf["config"] = job_in.overrides
 
         # Preserve a user-visible input display if provided (e.g. local upload summary)

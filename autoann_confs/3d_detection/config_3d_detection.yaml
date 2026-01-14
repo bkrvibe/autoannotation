@@ -1,0 +1,6 @@
+# 3D Object Detection & Tracking Pipeline Configuration
+# This config is used for the auto_annotation_pipeline_dynamic DAG
+
+# LiDAR frame coordinate system
+# Options: "local" (default), "vehicle", "world"
+lidar_frame: "local"

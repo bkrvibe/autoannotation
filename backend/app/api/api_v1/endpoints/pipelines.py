@@ -41,8 +41,8 @@ PIPELINE_CONFIG_MAP = {
         'category': '2D'
     },
     'auto_annotation_pipeline_dynamic': {
-        'config_dir': None,  # No config file for 3D pipeline
-        'config_file': None,
+        'config_dir': '3d_detection',
+        'config_file': 'config_3d_detection.yaml',
         'display_name': '3D Object Detection & Tracking',
         'description': 'Automated 3D object detection and tracking for LiDAR point cloud data',
         'category': '3D'
@@ -81,28 +81,31 @@ def _load_yaml_config(dag_id: str) -> Dict[str, Any]:
 
 
 def _extract_threshold_fields(config: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract user-configurable fields from the config (thresholds, confidence, batch_size)."""
+    """Extract user-configurable fields from the config (thresholds, confidence, batch_size, lidar_frame)."""
     configurable = {}
-    
+
     # Fields to exclude from user config
     excluded_fields = {'cross_class_nms_threshold'}
-    
+
+    # Fields to explicitly include (for 3D pipeline config)
+    included_fields = {'lidar_frame'}
+
     def find_configurable(obj, prefix=""):
         if isinstance(obj, dict):
             for key, value in obj.items():
                 full_key = f"{prefix}.{key}" if prefix else key
                 key_lower = key.lower()
-                
+
                 # Skip excluded fields
                 if key_lower in excluded_fields:
                     continue
-                
-                # Include threshold, confidence, and batch_size fields
-                if 'threshold' in key_lower or 'confidence' in key_lower or key_lower == 'batch_size':
+
+                # Include threshold, confidence, batch_size, and explicitly included fields
+                if 'threshold' in key_lower or 'confidence' in key_lower or key_lower == 'batch_size' or key_lower in included_fields:
                     configurable[full_key] = value
                 elif isinstance(value, dict):
                     find_configurable(value, full_key)
-    
+
     find_configurable(config)
     return configurable
 
