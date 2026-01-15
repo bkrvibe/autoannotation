@@ -5,19 +5,20 @@ from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
 import numpy as np
 import tempfile
+import re
 from scipy.spatial.transform import Rotation as R
 
 # -------------------------------------------------
-# Camera substring rules (authoritative)
+# Canonical camera IDs (authoritative, ordered)
 # -------------------------------------------------
 # Must match ANY folder containing these substrings
 CAMERA_SUBSTRING_RULES = [
-    (["front_left"], "CAM_FRONT_LEFT"),
-    (["front_right"], "CAM_FRONT_RIGHT"),
-    (["front"], "CAM_FRONT"),
-    (["rear_left", "back_left"], "CAM_BACK_LEFT"),
-    (["rear_right", "back_right"], "CAM_BACK_RIGHT"),
-    (["rear", "back"], "CAM_BACK"),
+    (["front_left"], "01_CAM_FRONT_LEFT"),
+    (["front_right"], "03_CAM_FRONT_RIGHT"),
+    (["front"], "02_CAM_FRONT"),
+    (["rear_left", "back_left"], "06_CAM_BACK_LEFT"),
+    (["rear_right", "back_right"], "04_CAM_BACK_RIGHT"),
+    (["rear", "back"], "05_CAM_BACK"),
 ]
 
 # Canonical NuScenes / CaliperGT output filenames
@@ -29,6 +30,16 @@ NUSCENES_CAMERA_OUTPUT = [
     ("CAM_BACK",        "05_CAM_BACK.jpg"),
 ]
 
+def rt_to_homogeneous(rotation, translation):
+    """
+    rotation: 3x3 list
+    translation: length-3 list
+    returns: 4x4 list
+    """
+    T = np.eye(4, dtype=float)
+    T[:3, :3] = np.array(rotation, dtype=float)
+    T[:3, 3] = np.array(translation, dtype=float)
+    return T.tolist()
 
 def normalize_dataset_root(input_path: str, detected_root: str) -> str:
     """
@@ -122,6 +133,15 @@ def identity_calibration() -> Dict[str, Any]:
         "translation": [0.0, 0.0, 0.0]
     }
 
+CAMERA_SUBSTRING_RULES = [
+    (["front_left"], "01_CAM_FRONT_LEFT"),
+    (["front_right"], "03_CAM_FRONT_RIGHT"),
+    (["front"], "02_CAM_FRONT"),
+    (["rear_left", "back_left"], "06_CAM_BACK_LEFT"),
+    (["rear_right", "back_right"], "04_CAM_BACK_RIGHT"),
+    (["rear", "back"], "05_CAM_BACK"),
+]
+
 def invert_transform(rotation_matrix, translation):
     Rm = np.array(rotation_matrix)
     t = np.array(translation)
@@ -133,62 +153,22 @@ def invert_transform(rotation_matrix, translation):
         "translation": t_inv.tolist()
     }
 
-def create_sensor_calibrations(ego_pose, sensor_calibration):
-    return {
-        "LIDAR_TOP": {
-            "sensor_calibration": sensor_calibration,
-            "ego_pose": ego_pose
-        },
-        "ego_pose": ego_pose
-    }
+def _match_camera_id(name: str) -> Optional[str]:
+    lname = name.lower()
+    lname = re.sub(r'_?cameras?_?', '', lname)
+    for substrings, cid in CAMERA_SUBSTRING_RULES:
+        if any(s in lname for s in substrings):
+            return cid
+    return None
 
-def find_closest_image(ts_us: int, image_paths):
-    best = None
-    best_dt = float("inf")
-    for p in image_paths:
-        try:
-            img_ts = int(p.stem)
-        except ValueError:
-            continue
-        dt = abs(img_ts - ts_us)
-        if dt < best_dt:
-            best_dt = dt
-            best = p
-    return best
+def intrinsic_to_matrix(intrinsic: dict):
+    K = np.array([
+        [intrinsic["fx"], 0.0, intrinsic["cx"]],
+        [0.0, intrinsic["fy"], intrinsic["cy"]],
+        [0.0, 0.0, 1.0]
+    ], dtype=float)
 
-def normalize_camera_folders(cameras_root: Path):
-    camera_images = {}
-
-    for cam_dir in cameras_root.iterdir():
-        if not cam_dir.is_dir():
-            continue
-
-        name = cam_dir.name.lower()
-
-        cam_id = None
-        for substrings, cid in CAMERA_SUBSTRING_RULES:
-            if any(s in name for s in substrings):
-                cam_id = cid
-                break
-
-        if not cam_id:
-            continue
-
-        images = sorted(
-            list(cam_dir.glob("*.jpg")) + list(cam_dir.glob("*.png"))
-        )
-
-        if images:
-            camera_images.setdefault(cam_id, []).extend(images)
-
-    # sort images per camera by timestamp
-    for cam_id in camera_images:
-        camera_images[cam_id] = sorted(
-            camera_images[cam_id],
-            key=lambda p: int(p.stem)
-        )
-
-    return camera_images
+    return K
 
 def transform_custom_to_expected(input_path: str, output_path: str) -> Tuple[bool, str]:
     input_path = Path(input_path)
@@ -196,53 +176,95 @@ def transform_custom_to_expected(input_path: str, output_path: str) -> Tuple[boo
 
     pc_dir = output_path / "pointcloud"
     ri_dir = output_path / "related_images"
+    cam_dir = output_path / "cameras"
+
     pc_dir.mkdir(parents=True, exist_ok=True)
     ri_dir.mkdir(parents=True, exist_ok=True)
+    cam_dir.mkdir(parents=True, exist_ok=True)
 
+    # Load calibration and poses
     calib = json.load(open(input_path / "calibration.json"))
-    sensor_calib = invert_transform(
+    poses = json.load(open(input_path / "ego_poses/poses.json"))["frames"]
+
+    # LiDAR calibration
+    lidar_sensor_calib = invert_transform(
         calib["ego_to_lidar"]["rotation"],
         calib["ego_to_lidar"]["translation"]
     )
 
-    poses = json.load(open(input_path / "ego_poses/poses.json"))["frames"]
-
-    camera_images = normalize_camera_folders(input_path / "cameras")
+    # Camera calibrations using substring match (same logic as camera folders)
+    camera_calibs = {}
+    for cam_name, cam_data in calib.get("lidar_to_cameras", {}).items():
+        cid = _match_camera_id(cam_name)
+        if not cid:
+            continue
+        camera_calibs[cid] = {
+            "transformation_matrix": rt_to_homogeneous(
+                cam_data["extrinsic"]["rotation"],
+                cam_data["extrinsic"]["translation"],
+            ),
+            "camera_intrinsic": intrinsic_to_matrix(cam_data["intrinsic"]).tolist()
+        }
 
     lidar_files = sorted((input_path / "lidar").glob("*.pcd"))
     if not lidar_files:
         return False, "No LiDAR files found"
 
+    # Load camera images strictly by index (same substring logic)
+    camera_images = {}
+    cameras_root = input_path / "cameras"
+
+    for cam_folder in cameras_root.iterdir():
+        if not cam_folder.is_dir():
+            continue
+        cid = _match_camera_id(cam_folder.name)
+        if not cid:
+            continue
+
+        imgs = sorted(cam_folder.glob("*.jpg"))
+        camera_images[cid] = imgs
+        (cam_dir / cid).mkdir(exist_ok=True)
+
+    # Process frames
     for idx, lidar in enumerate(lidar_files):
         ts_us = int(float(poses[idx]["timestamp"]) * 1_000_000)
-        ego_pose = {
-            "rotation": poses[idx]["rotation"],
-            "translation": poses[idx]["position"]
-        }
 
         shutil.copy2(lidar, pc_dir / f"lidar__{ts_us}.pcd")
 
         frame_dir = ri_dir / f"lidar__{ts_us}_pcd"
         frame_dir.mkdir(exist_ok=True)
 
-        for cam_key, out_name in NUSCENES_CAMERA_OUTPUT:
-            imgs = camera_images.get(cam_key)
-            if not imgs:
-                continue
-            img = find_closest_image(ts_us, imgs)
-            if img:
-                shutil.copy2(img, frame_dir / out_name)
+        frame_calib = {
+            "LIDAR_TOP": {
+                "sensor_calibration": lidar_sensor_calib,
+            "ego_pose": {
+                "rotation": poses[idx]["rotation"],
+                "translation": poses[idx]["position"]
+            }
+            },
+            "ego_pose": {
+                "rotation": poses[idx]["rotation"],
+                "translation": poses[idx]["position"]
+            }}
+
+        # Inject camera calibrations (matched names)
+        for cid, cam_cal in camera_calibs.items():
+            frame_calib[cid] = cam_cal
 
         with open(frame_dir / "sensor_calibrations.json", "w") as f:
-            json.dump(
-                create_sensor_calibrations(ego_pose, sensor_calib),
-                f,
-                indent=2
-            )
+            json.dump(frame_calib, f, indent=2)
+
+        # Copy camera images by index
+        for cid, imgs in camera_images.items():
+            if idx < len(imgs):
+                shutil.copy2(
+                    imgs[idx],
+                    cam_dir / cid / f"lidar__{ts_us}.jpg"
+                )
 
     return True, f"Transformed {len(lidar_files)} frames"
 
-def cleanup_transformed_data(path: str) -> None: 
-    """Clean up transformed data directory if it's a temp directory.""" 
-    if path.startswith(tempfile.gettempdir()): 
+
+def cleanup_transformed_data(path: str) -> None:
+    if path.startswith(tempfile.gettempdir()):
         shutil.rmtree(path, ignore_errors=True)
