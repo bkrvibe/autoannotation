@@ -35,7 +35,7 @@ export default function JobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [downloadFormat, setDownloadFormat] = useState<'calipergt' | 'coco'>('calipergt');
+  const [downloadFormat, setDownloadFormat] = useState<'calipergt' | 'coco' | 'kitti3d'>('calipergt');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -101,7 +101,8 @@ export default function JobDetailPage() {
         modelType = 'Detection';
       }
       
-      const filename = `${timestamp}_${datasetName}_${modelType}_${downloadFormat}.json`;
+      const extension = downloadFormat === 'kitti3d' ? 'zip' : 'json';
+      const filename = `${timestamp}_${datasetName}_${modelType}_${downloadFormat}.${extension}`;
       
       link.setAttribute('download', filename);
       document.body.appendChild(link);
@@ -165,11 +166,15 @@ export default function JobDetailPage() {
             {job.status === 'success' && (
               <select
                 value={downloadFormat}
-                onChange={(e) => setDownloadFormat(e.target.value as 'calipergt' | 'coco')}
+                onChange={(e) => setDownloadFormat(e.target.value as 'calipergt' | 'coco' | 'kitti3d')}
                 className="h-9 px-3 text-xs rounded-md border border-input bg-background"
               >
                 <option value="calipergt">CaliperGT Format</option>
-                <option value="coco">COCO Format</option>
+                {job.pipeline_id === 'auto_annotation_pipeline_dynamic' ? (
+                  <option value="kitti3d">KITTI 3D Format</option>
+                ) : (
+                  <option value="coco">COCO Format</option>
+                )}
               </select>
             )}
             

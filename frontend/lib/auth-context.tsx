@@ -6,7 +6,7 @@ import { api, MeResponse, setCsrfToken, clearCsrfToken } from '@/lib/api';
 interface User {
   id: string;
   email: string;
-  name: string;
+  full_name: string | null;
   role: string;
 }
 

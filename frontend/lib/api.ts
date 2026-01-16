@@ -53,7 +53,7 @@ export interface AuthResponse {
   user: {
     id: string;
     email: string;
-    name: string;
+    full_name: string | null;
     role: string;
   };
   tenant: {
@@ -67,7 +67,7 @@ export interface MeResponse {
   user: {
     id: string;
     email: string;
-    name: string;
+    full_name: string | null;
     role: string;
   };
   tenant: {
@@ -171,7 +171,7 @@ export const api = {
         const response = await axiosInstance.get(`/jobs/${id}/tasks`);
         return response.data;
     },
-    downloadArtifact: async (id: string, format: 'calipergt' | 'coco' = 'calipergt') => {
+    downloadArtifact: async (id: string, format: 'calipergt' | 'coco' | 'kitti3d' = 'calipergt') => {
         const response = await axiosInstance.post(`/jobs/${id}/download?format=${format}`, null, {
             responseType: 'blob'
         });

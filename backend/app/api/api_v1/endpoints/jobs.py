@@ -8,7 +8,7 @@ from app.schemas.job import Job, JobCreate
 from app.models.job import Job as JobModel
 from app.models.tenant import Tenant
 from app.services.airflow import get_airflow_service_for_tenant
-from app.utils.format_converter import calipergt_to_coco
+from app.utils.format_converter import calipergt_to_coco, calipergt_to_kitti3d
 from app.utils.lidar_preprocessing import preprocess_3d_data
 import subprocess
 import tempfile
@@ -335,13 +335,13 @@ def get_job_tasks(
 @router.post("/{job_id}/download")
 def download_result_file(
     job_id: int,
-    format: str = Query("calipergt", regex="^(calipergt|coco)$"),
+    format: str = Query("calipergt", regex="^(calipergt|coco|kitti3d)$"),
     db: Session = Depends(deps.get_db),
     current_user: deps.CurrentUser = Depends(deps.get_current_active_user),
 ):
     """
     Download the annotation result file from the Airflow worker via SCP.
-    Supports CaliperGT (default) and COCO formats.
+    Supports CaliperGT (default), COCO, and KITTI 3D formats.
     Automatically fetches XCom if not already available.
     """
     job = db.query(JobModel).filter(
@@ -396,6 +396,7 @@ def download_result_file(
         filename = f"annotations_3d_{job.id}_{timestamp}.json"
 
         content = json.dumps(annotations, indent=2).encode('utf-8')
+        media_type = "application/json"
 
         # Convert format if requested
         if format == "coco":
@@ -406,10 +407,19 @@ def download_result_file(
             except Exception as e:
                 print(f"Format conversion error: {e}")
                 raise HTTPException(status_code=500, detail=f"Failed to convert to COCO format: {str(e)}")
+        elif format == "kitti3d":
+            try:
+                kitti_zip_bytes = calipergt_to_kitti3d(annotations)
+                content = kitti_zip_bytes
+                filename = f"annotations_3d_{job.id}_{timestamp}_kitti.zip"
+                media_type = "application/zip"
+            except Exception as e:
+                print(f"KITTI 3D conversion error: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to convert to KITTI 3D format: {str(e)}")
 
         return Response(
             content=content,
-            media_type="application/json",
+            media_type=media_type,
             headers={
                 "Content-Disposition": f"attachment; filename={filename}"
             }

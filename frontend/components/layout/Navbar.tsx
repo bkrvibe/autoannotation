@@ -35,7 +35,7 @@ export function Navbar({ title, description }: NavbarProps) {
   };
 
   // Get user initials for avatar
-  const getInitials = (name?: string) => {
+  const getInitials = (name?: string | null) => {
     if (!name) return "U";
     const parts = name.split(" ");
     if (parts.length >= 2) {
@@ -96,17 +96,17 @@ export function Navbar({ title, description }: NavbarProps) {
             <Button variant="ghost" className="flex items-center gap-2 pl-2 pr-3 h-9">
               <Avatar className="h-7 w-7 border border-border">
                 <AvatarFallback className="bg-gradient-to-br from-violet-500 to-purple-600 text-white text-xs font-medium">
-                  {getInitials(user?.name)}
+                  {getInitials(user?.full_name)}
                 </AvatarFallback>
               </Avatar>
-              <span className="text-sm font-medium hidden sm:inline-block">{user?.name || "User"}</span>
+              <span className="text-sm font-medium hidden sm:inline-block">{user?.full_name || "User"}</span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56" align="end" forceMount>
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium">{user?.name || "User"}</p>
+                <p className="text-sm font-medium">{user?.full_name || "User"}</p>
                 <p className="text-xs text-muted-foreground">
                   {user?.email}
                 </p>

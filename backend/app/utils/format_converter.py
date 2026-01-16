@@ -1,8 +1,11 @@
 """
 Format converter utilities for annotation data.
-Converts between CaliperGT and COCO formats.
+Converts between CaliperGT, COCO, and KITTI 3D formats.
 """
+import io
 import json
+import zipfile
+from collections import defaultdict
 from typing import Dict, List, Any, Tuple
 from datetime import datetime
 
@@ -169,3 +172,97 @@ def get_pipeline_type(pipeline_id: str) -> str:
     elif "2d" in pipeline_id.lower():
         return "detection"
     return "detection"
+
+
+def calipergt_to_kitti3d(calipergt_data: Dict[str, Any]) -> bytes:
+    """
+    Convert CaliperGT 3D annotations to standard KITTI 3D label format.
+
+    CaliperGT 3D format has:
+    - tracks: list of track objects, each with:
+      - frame: starting frame number
+      - label: class name (e.g., "pedestrian")
+      - shapes: list of cuboid shapes with:
+        - type: "cuboid"
+        - frame: frame number
+        - points: [x, y, z, rx, ry, rz, width, length, height, ...]
+        - outside: boolean (if true, track ends/not visible)
+
+    Standard KITTI 3D label format (per line in .txt file):
+    <class> <truncated> <occluded> <alpha> <left> <top> <right> <bottom> <height> <width> <length> <x> <y> <z> <rotation_y>
+
+    For LiDAR-only data (no camera):
+    - truncated: -1 (unknown)
+    - occluded: -1 (unknown)
+    - alpha: -10 (unknown)
+    - bbox 2D: -1, -1, -1, -1 (not available)
+
+    Returns:
+        bytes: ZIP archive containing one .txt file per frame in label_2/ folder
+    """
+    # Group annotations by frame number
+    frames_annotations: Dict[int, List[str]] = defaultdict(list)
+
+    tracks = calipergt_data.get("tracks", [])
+
+    for track in tracks:
+        label = track.get("label", "unknown")
+        # Capitalize first letter for KITTI format
+        label = label.capitalize()
+        shapes = track.get("shapes", [])
+
+        for shape in shapes:
+            # Skip shapes marked as "outside" (track not visible in this frame)
+            if shape.get("outside", False):
+                continue
+
+            if shape.get("type") != "cuboid":
+                continue
+
+            frame_num = shape.get("frame", 0)
+            points = shape.get("points", [])
+
+            if len(points) < 9:
+                continue  # Invalid cuboid data
+
+            # Extract cuboid parameters from CaliperGT format
+            # points: [x, y, z, rx, ry, rz, width, length, height, ...]
+            x = points[0]
+            y = points[1]
+            z = points[2]
+            # rx, ry are typically 0 for ground vehicles
+            rz = points[5]  # yaw rotation
+            width = points[6]
+            length = points[7]
+            height = points[8]
+
+            # KITTI format values for LiDAR-only data
+            truncated = -1  # Unknown
+            occluded = -1   # Unknown
+            alpha = -10     # Unknown (observation angle)
+            # 2D bbox not available for LiDAR-only
+            left, top, right, bottom = -1, -1, -1, -1
+
+            # rotation_y in KITTI is the rotation around Y-axis (yaw)
+            rotation_y = rz
+
+            # Format KITTI label line
+            # KITTI format: class truncated occluded alpha bbox(4) dimensions(3) location(3) rotation_y
+            kitti_line = f"{label} {truncated} {occluded} {alpha:.2f} {left} {top} {right} {bottom} {height:.2f} {width:.2f} {length:.2f} {x:.2f} {y:.2f} {z:.2f} {rotation_y:.2f}"
+
+            frames_annotations[frame_num].append(kitti_line)
+
+    # Create ZIP archive with one .txt file per frame
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # Sort frames and create label files
+        for frame_num in sorted(frames_annotations.keys()):
+            annotations = frames_annotations[frame_num]
+            # KITTI uses 6-digit zero-padded frame numbers
+            filename = f"{frame_num:06d}.txt"
+            content = "\n".join(annotations)
+            zip_file.writestr(f"label_2/{filename}", content)
+
+    zip_buffer.seek(0)
+    return zip_buffer.read()
