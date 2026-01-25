@@ -1,0 +1,26 @@
+# Minimal image for GCS download/upload tasks
+# ~200MB vs ~15GB for the full ML image
+
+FROM python:3.10-slim
+
+# Install only essential system packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Google Cloud SDK (minimal components)
+RUN curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir=/opt && \
+    /opt/google-cloud-sdk/bin/gcloud components install gsutil --quiet
+
+# Add gsutil to PATH
+ENV PATH="/opt/google-cloud-sdk/bin:${PATH}"
+
+# Install Python GCS library (alternative to gsutil CLI)
+RUN pip install --no-cache-dir google-cloud-storage
+
+# Set workdir
+WORKDIR /app
+
+# Default command
+CMD ["bash"]

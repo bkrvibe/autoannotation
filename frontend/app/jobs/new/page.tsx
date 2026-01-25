@@ -2,17 +2,17 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, UploadValidation, MissingFile } from '@/lib/api';
 import { useRequireAuth } from '@/lib/auth-context';
 import { AppLayout } from '@/components/layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { 
-  ArrowLeft, 
-  ArrowRight, 
-  Check, 
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
   Loader2,
   FolderInput,
   Settings,
@@ -23,6 +23,9 @@ import {
   Layers,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  Info,
+  HelpCircle,
   Route
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -186,6 +189,12 @@ function NewJobContent() {
   const [uploadedDatasetName, setUploadedDatasetName] = useState(''); // Store dataset/folder name
   const [isUploading, setIsUploading] = useState(false);
   const [fileInputKey, setFileInputKey] = useState(Date.now()); // Key to reset file inputs
+  const [uploadValidation, setUploadValidation] = useState<UploadValidation | null>(null);
+  const [showDataGuide, setShowDataGuide] = useState(false);
+  const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({});
+  const [showMissingFilesPrompt, setShowMissingFilesPrompt] = useState(false);
+  const [uploadingAdditional, setUploadingAdditional] = useState<string | null>(null);
+  const [additionalFileInputKey, setAdditionalFileInputKey] = useState(Date.now());
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -538,6 +547,7 @@ function NewJobContent() {
                                      });
                                      setInputUri(res.gcs_path);
                                      setUploadedFileCount(1);
+                                     setUploadValidation(null);
                                      // Extract filename without extension as dataset name
                                      const fileName = file.name.replace(/\.(zip|jpg|jpeg|png|gif|bmp)$/i, '');
                                      setUploadedDatasetName(fileName);
@@ -548,6 +558,10 @@ function NewJobContent() {
                                      });
                                      setInputUri(res.gcs_path);
                                      setUploadedFileCount(res.file_count);
+                                     // Capture validation results
+                                     if (res.validation) {
+                                       setUploadValidation(res.validation);
+                                     }
                                      // Try to get folder name from first file if available
                                      const firstFile = filesToUpload[0] as any;
                                      if (firstFile.webkitRelativePath) {
@@ -610,6 +624,10 @@ function NewJobContent() {
                                    });
                                    setInputUri(res.gcs_path);
                                    setUploadedFileCount(res.file_count);
+                                   // Capture validation results
+                                   if (res.validation) {
+                                     setUploadValidation(res.validation);
+                                   }
                                    // Extract folder name from first file's path
                                    const firstFile = filesToUpload[0] as any;
                                    if (firstFile.webkitRelativePath) {
@@ -675,6 +693,338 @@ function NewJobContent() {
                             Uploaded {uploadedFileCount} file{uploadedFileCount > 1 ? 's' : ''} successfully
                           </span>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Data Validation Feedback */}
+                    {!isUploading && uploadValidation && (
+                      <div className="space-y-3">
+                        {/* Validation Status */}
+                        <div className={cn(
+                          "p-4 rounded-lg border",
+                          uploadValidation.is_valid_structure
+                            ? "bg-emerald-500/10 border-emerald-500/20"
+                            : "bg-amber-500/10 border-amber-500/20"
+                        )}>
+                          <div className="flex items-start gap-3">
+                            {uploadValidation.is_valid_structure ? (
+                              <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                            )}
+                            <div className="flex-1">
+                              <p className={cn(
+                                "text-sm font-medium",
+                                uploadValidation.is_valid_structure ? "text-emerald-600" : "text-amber-600"
+                              )}>
+                                {uploadValidation.is_valid_structure
+                                  ? `Valid ${uploadValidation.detected_type.toUpperCase()} data structure detected`
+                                  : "Data structure may need adjustment"
+                                }
+                              </p>
+                              {uploadValidation.file_counts && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Found: {uploadValidation.file_counts.images || 0} images,
+                                  {' '}{uploadValidation.file_counts.pointcloud_files || 0} point clouds,
+                                  {' '}{uploadValidation.file_counts.total || 0} total files
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Warnings */}
+                        {uploadValidation.warnings && uploadValidation.warnings.length > 0 && (
+                          <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/10">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs font-medium text-amber-600">Warnings</p>
+                                <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+                                  {uploadValidation.warnings.map((w, i) => (
+                                    <li key={i}>- {w}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Missing Files - Interactive Prompt */}
+                        {uploadValidation.needs_user_input && uploadValidation.found_candidates && (
+                          <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                            <div className="flex items-start gap-3">
+                              <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                              <div className="flex-1 space-y-4">
+                                <div>
+                                  <p className="text-sm font-medium text-amber-600">Action Required</p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    We found some files that might be what you need. Please confirm:
+                                  </p>
+                                </div>
+
+                                {/* Calibration candidates */}
+                                {uploadValidation.found_candidates.calibration && (
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-medium text-foreground">
+                                      Which file contains calibration data?
+                                    </p>
+                                    <div className="space-y-1">
+                                      {uploadValidation.found_candidates.calibration.map((candidate, i) => (
+                                        <label key={i} className="flex items-center gap-2 p-2 rounded bg-card border border-border hover:border-primary cursor-pointer">
+                                          <input
+                                            type="radio"
+                                            name="calibration_candidate"
+                                            value={candidate}
+                                            checked={selectedCandidates.calibration === candidate}
+                                            onChange={(e) => setSelectedCandidates(prev => ({
+                                              ...prev,
+                                              calibration: e.target.value
+                                            }))}
+                                            className="text-primary"
+                                          />
+                                          <span className="text-xs font-mono">{candidate}</span>
+                                        </label>
+                                      ))}
+                                      <label className="flex items-center gap-2 p-2 rounded bg-card border border-border hover:border-primary cursor-pointer">
+                                        <input
+                                          type="radio"
+                                          name="calibration_candidate"
+                                          value="none"
+                                          checked={selectedCandidates.calibration === 'none'}
+                                          onChange={(e) => setSelectedCandidates(prev => ({
+                                            ...prev,
+                                            calibration: e.target.value
+                                          }))}
+                                          className="text-primary"
+                                        />
+                                        <span className="text-xs text-muted-foreground">None of these - I need to upload it</span>
+                                      </label>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Poses candidates */}
+                                {uploadValidation.found_candidates.poses && (
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-medium text-foreground">
+                                      Which file contains ego poses/trajectory data?
+                                    </p>
+                                    <div className="space-y-1">
+                                      {uploadValidation.found_candidates.poses.map((candidate, i) => (
+                                        <label key={i} className="flex items-center gap-2 p-2 rounded bg-card border border-border hover:border-primary cursor-pointer">
+                                          <input
+                                            type="radio"
+                                            name="poses_candidate"
+                                            value={candidate}
+                                            checked={selectedCandidates.poses === candidate}
+                                            onChange={(e) => setSelectedCandidates(prev => ({
+                                              ...prev,
+                                              poses: e.target.value
+                                            }))}
+                                            className="text-primary"
+                                          />
+                                          <span className="text-xs font-mono">{candidate}</span>
+                                        </label>
+                                      ))}
+                                      <label className="flex items-center gap-2 p-2 rounded bg-card border border-border hover:border-primary cursor-pointer">
+                                        <input
+                                          type="radio"
+                                          name="poses_candidate"
+                                          value="none"
+                                          checked={selectedCandidates.poses === 'none'}
+                                          onChange={(e) => setSelectedCandidates(prev => ({
+                                            ...prev,
+                                            poses: e.target.value
+                                          }))}
+                                          className="text-primary"
+                                        />
+                                        <span className="text-xs text-muted-foreground">None of these - I need to upload it</span>
+                                      </label>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Missing Files - Upload Required */}
+                        {uploadValidation.missing_files && uploadValidation.missing_files.length > 0 && !uploadValidation.needs_user_input && (
+                          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+                            <div className="flex items-start gap-3">
+                              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                              <div className="flex-1">
+                                <p className="text-sm font-medium text-red-600">Missing Required Files</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Please upload the following files to continue:
+                                </p>
+                                <ul className="mt-3 space-y-3">
+                                  {uploadValidation.missing_files.map((mf, i) => (
+                                    <li key={i} className="p-3 rounded bg-card border border-border">
+                                      <p className="text-xs font-medium text-foreground">{mf.description}</p>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        Expected: <span className="font-mono">{mf.expected_names.join(' or ')}</span>
+                                      </p>
+
+                                      {/* Upload button for this missing file */}
+                                      <div className="mt-2">
+                                        <label className="cursor-pointer">
+                                          <input
+                                            key={`additional-${mf.file_type}-${additionalFileInputKey}`}
+                                            type="file"
+                                            accept=".json"
+                                            className="hidden"
+                                            disabled={uploadingAdditional === mf.file_type}
+                                            onChange={async (e) => {
+                                              if (e.target.files && e.target.files[0] && inputUri) {
+                                                const file = e.target.files[0];
+                                                try {
+                                                  setUploadingAdditional(mf.file_type);
+                                                  setError('');
+
+                                                  // Determine target path based on file type
+                                                  let targetPath = mf.expected_names[0];
+                                                  if (mf.file_type === 'poses') {
+                                                    targetPath = 'ego_poses/poses.json';
+                                                  } else if (mf.file_type === 'calibration') {
+                                                    targetPath = 'calibration.json';
+                                                  }
+
+                                                  await api.utils.uploadAdditional(file, inputUri, targetPath);
+
+                                                  // Re-validate after upload
+                                                  const validation = await api.utils.validateGcsData(inputUri, '3d');
+                                                  setUploadValidation({
+                                                    detected_type: validation.format_detected || 'unknown',
+                                                    is_valid_structure: validation.is_valid || false,
+                                                    warnings: validation.warnings || [],
+                                                    suggestions: validation.suggestions || [],
+                                                    file_counts: validation.file_counts || {},
+                                                    missing_files: validation.missing_files || [],
+                                                    found_candidates: validation.found_candidates || {},
+                                                    needs_user_input: (validation.found_candidates && Object.keys(validation.found_candidates).length > 0) || false
+                                                  });
+
+                                                } catch (err: any) {
+                                                  setError(err.response?.data?.detail || `Failed to upload ${mf.file_type} file`);
+                                                } finally {
+                                                  setUploadingAdditional(null);
+                                                  setAdditionalFileInputKey(Date.now());
+                                                }
+                                              }
+                                            }}
+                                          />
+                                          <span className={cn(
+                                            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
+                                            uploadingAdditional === mf.file_type
+                                              ? "bg-primary/50 text-primary-foreground cursor-wait"
+                                              : "bg-primary text-primary-foreground hover:bg-primary/90"
+                                          )}>
+                                            {uploadingAdditional === mf.file_type ? (
+                                              <>
+                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                Uploading...
+                                              </>
+                                            ) : (
+                                              <>
+                                                <FolderInput className="h-3 w-3" />
+                                                Upload {mf.file_type} file
+                                              </>
+                                            )}
+                                          </span>
+                                        </label>
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Suggestions */}
+                        {uploadValidation.suggestions && uploadValidation.suggestions.length > 0 && !uploadValidation.needs_user_input && (
+                          <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/10">
+                            <div className="flex items-start gap-2">
+                              <Info className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs font-medium text-blue-600">Suggestions</p>
+                                <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+                                  {uploadValidation.suggestions.map((s, i) => (
+                                    <li key={i}>- {s}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Help Link */}
+                        <button
+                          onClick={() => setShowDataGuide(!showDataGuide)}
+                          className="flex items-center gap-1 text-xs text-primary hover:underline"
+                        >
+                          <HelpCircle className="h-3 w-3" />
+                          {showDataGuide ? 'Hide' : 'Show'} expected data structure
+                        </button>
+
+                        {/* Data Structure Guide */}
+                        {showDataGuide && (
+                          <div className="p-4 rounded-lg bg-secondary/50 border border-border">
+                            <h4 className="text-sm font-medium text-foreground mb-3">
+                              Expected Data Structure
+                            </h4>
+                            {selectedPipeline?.id === 'auto_annotation_pipeline_dynamic' ? (
+                              <div className="space-y-4">
+                                <div>
+                                  <p className="text-xs font-medium text-primary mb-2">CaliperGT Format (Ready to Use)</p>
+                                  <pre className="text-xs text-muted-foreground bg-card p-2 rounded overflow-x-auto">
+{`data/
+  pointcloud/
+    lidar__1234567890.pcd
+    lidar__1234567891.pcd
+  related_images/
+    lidar__1234567890_pcd/
+      sensor_calibrations.json
+      01_CAM_FRONT_LEFT.jpg
+      02_CAM_FRONT.jpg`}
+                                  </pre>
+                                </div>
+                                <div>
+                                  <p className="text-xs font-medium text-primary mb-2">Custom Format (Auto-Transformed)</p>
+                                  <pre className="text-xs text-muted-foreground bg-card p-2 rounded overflow-x-auto">
+{`data/
+  lidar/
+    000000.pcd
+    000001.pcd
+  calibration.json
+  ego_poses/
+    poses.json
+  cameras/ (optional)
+    front_left/
+    front/`}
+                                  </pre>
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <p className="text-xs font-medium text-primary mb-2">2D Image Format</p>
+                                <pre className="text-xs text-muted-foreground bg-card p-2 rounded overflow-x-auto">
+{`data/
+  images/
+    image001.jpg
+    image002.jpg
+    ...
+Or images directly in root folder`}
+                                </pre>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  Supported formats: .jpg, .jpeg, .png, .bmp, .gif, .tiff, .webp
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 

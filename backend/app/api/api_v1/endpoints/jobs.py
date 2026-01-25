@@ -85,18 +85,27 @@ def create_job(
         # Preprocess 3D data if needed
         if is_3d_pipeline:
             print(f"Preprocessing 3D data for pipeline {dag_id}...")
-            transformed_uri, was_transformed, message = preprocess_3d_data(
-                input_gcs_path=job_in.input_uri,
-                tenant_id=str(current_user.tenant_id),
-                job_id=None  # Job ID not available yet
-            )
+            try:
+                transformed_uri, was_transformed, message = preprocess_3d_data(
+                    input_gcs_path=job_in.input_uri,
+                    tenant_id=str(current_user.tenant_id),
+                    job_id=None  # Job ID not available yet
+                )
 
-            if was_transformed:
-                print(f"Data transformed: {message}")
-                actual_input_uri = transformed_uri
-                preprocessing_message = message
-            else:
-                print(f"Data preprocessing result: {message}")
+                if was_transformed:
+                    print(f"Data transformed: {message}")
+                    actual_input_uri = transformed_uri
+                    preprocessing_message = message
+                else:
+                    print(f"Data preprocessing result: {message}")
+            except ValueError as ve:
+                # Data format validation error - return clear message to user
+                error_msg = str(ve)
+                print(f"Data validation failed: {error_msg}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Data validation failed: {error_msg}"
+                )
 
         # Build config matching DAG expected structure:
         # conf: { gcs_path: "...", config: { batch_size: ..., ... }, user_input_display: "...", lidar_frame: "..." }

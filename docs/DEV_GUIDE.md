@@ -77,6 +77,10 @@ The **Auto-Annotation Orchestrator** is a web platform designed to manage and tr
 *   **Orchestration**: External Apache Airflow (`airflow.caliperai.ai`).
 *   **Storage**: Google Cloud Storage (`data-sets-caliperai`).
 
+### Related Documentation
+
+- **[DATA_FORMAT_GUIDE.md](./DATA_FORMAT_GUIDE.md)** - Detailed guide for input data formats (2D images, 3D LiDAR) and output annotation formats (CaliperGT, COCO, KITTI)
+
 ---
 
 ## 2. Setup & Installation

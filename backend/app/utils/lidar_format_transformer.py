@@ -101,20 +101,77 @@ def detect_format(data_path: str, max_depth: int = 3) -> Tuple[str, Optional[str
         if depth > max_depth:
             continue
 
+        # Debug logging
+        try:
+            subdirs = [d.name for d in current.iterdir() if d.is_dir()]
+            files = [f.name for f in current.iterdir() if f.is_file()]
+            print(f"[detect_format] Checking {current} (depth={depth})")
+            print(f"  Subdirs: {subdirs[:10]}")
+            print(f"  Files: {files[:10]}")
+        except Exception as e:
+            print(f"[detect_format] Error listing {current}: {e}")
+
         # --- Case 1: Already transformed (CaliperGT) ---
         if (
             (current / "pointcloud").is_dir()
             and (current / "related_images").is_dir()
         ):
+            print(f"[detect_format] Found 'expected' format at {current}")
             return "expected", str(current)
 
         # --- Case 2: Custom raw format ---
-        if (
-            (current / "lidar").is_dir()
-            and (current / "ego_poses" / "poses.json").exists()
-            and (current / "calibration.json").exists()
-        ):
+        has_lidar = (current / "lidar").is_dir()
+        has_calibration = (current / "calibration.json").exists() or (current / "calib.json").exists()
+
+        # Check for poses in many different locations and names
+        poses_locations = [
+            current / "ego_poses" / "poses.json",
+            current / "ego_poses" / "ego_poses.json",
+            current / "poses.json",
+            current / "ego_poses.json",
+            current / "poses" / "poses.json",
+            current / "ego_pose" / "poses.json",
+        ]
+
+        # Also check for any JSON file inside ego_poses directory
+        ego_poses_dir = current / "ego_poses"
+        if ego_poses_dir.is_dir():
+            for json_file in ego_poses_dir.glob("*.json"):
+                if json_file not in poses_locations:
+                    poses_locations.append(json_file)
+
+        found_poses_file = None
+        for p in poses_locations:
+            if p.exists():
+                found_poses_file = p
+                break
+
+        has_poses = found_poses_file is not None
+
+        if has_lidar and has_calibration and has_poses:
+            print(f"[detect_format] Found 'custom' format at {current}")
+            print(f"  Poses file: {found_poses_file}")
             return "custom", str(current)
+
+        # --- Case 3: Has lidar but missing some files - report what's missing ---
+        if has_lidar:
+            pcd_files = list((current / "lidar").glob("*.pcd"))
+            bin_files = list((current / "lidar").glob("*.bin"))
+            print(f"[detect_format] Found lidar dir with {len(pcd_files)} .pcd files, {len(bin_files)} .bin files")
+
+            if not has_calibration:
+                print(f"  MISSING: calibration.json (checked: calibration.json, calib.json)")
+            else:
+                print(f"  FOUND: calibration file")
+
+            if not has_poses:
+                print(f"  MISSING: poses file (checked: {[str(p.relative_to(current)) for p in poses_locations[:4]]})")
+                # List what's actually in ego_poses if it exists
+                if ego_poses_dir.is_dir():
+                    ego_contents = list(ego_poses_dir.iterdir())
+                    print(f"  Contents of ego_poses/: {[f.name for f in ego_contents]}")
+            else:
+                print(f"  FOUND: poses file at {found_poses_file}")
 
         # Traverse children
         try:
@@ -124,6 +181,7 @@ def detect_format(data_path: str, max_depth: int = 3) -> Tuple[str, Optional[str
         except PermissionError:
             pass
 
+    print(f"[detect_format] No format detected, returning 'unknown'")
     return "unknown", None
 
 
@@ -170,6 +228,83 @@ def intrinsic_to_matrix(intrinsic: dict):
 
     return K
 
+def find_poses_file(input_path: Path) -> Tuple[Optional[Path], Optional[list]]:
+    """Find and load poses file from various possible locations."""
+    poses_locations = [
+        input_path / "ego_poses" / "poses.json",
+        input_path / "ego_poses" / "ego_poses.json",  # Added this!
+        input_path / "poses.json",
+        input_path / "ego_poses.json",
+        input_path / "poses" / "poses.json",
+        input_path / "ego_pose" / "poses.json",
+    ]
+
+    for loc in poses_locations:
+        if loc.exists():
+            try:
+                data = json.load(open(loc))
+                # Handle different formats
+                if isinstance(data, dict) and "frames" in data:
+                    return loc, data["frames"]
+                elif isinstance(data, list):
+                    return loc, data
+                elif isinstance(data, dict) and "poses" in data:
+                    return loc, data["poses"]
+            except Exception as e:
+                print(f"Error loading {loc}: {e}")
+                continue
+
+    # Search for any JSON file that looks like poses
+    for json_file in input_path.rglob("*.json"):
+        if json_file.name.lower() in ['calibration.json', 'calib.json']:
+            continue
+        try:
+            data = json.load(open(json_file))
+            if isinstance(data, dict) and "frames" in data:
+                print(f"Found poses in {json_file}")
+                return json_file, data["frames"]
+            elif isinstance(data, list) and len(data) > 0:
+                first = data[0]
+                if isinstance(first, dict) and any(k in first for k in ['position', 'translation', 'rotation', 'timestamp']):
+                    print(f"Found poses list in {json_file}")
+                    return json_file, data
+        except:
+            continue
+
+    return None, None
+
+
+def find_calibration_file(input_path: Path) -> Tuple[Optional[Path], Optional[dict]]:
+    """Find and load calibration file from various possible locations."""
+    calib_locations = [
+        input_path / "calibration.json",
+        input_path / "calib.json",
+        input_path / "sensor_calibration.json",
+        input_path / "calibrations.json",
+    ]
+
+    for loc in calib_locations:
+        if loc.exists():
+            try:
+                data = json.load(open(loc))
+                return loc, data
+            except Exception as e:
+                print(f"Error loading {loc}: {e}")
+                continue
+
+    # Search for any JSON file that looks like calibration
+    for json_file in input_path.rglob("*.json"):
+        try:
+            data = json.load(open(json_file))
+            if isinstance(data, dict) and any(k in data for k in ['ego_to_lidar', 'lidar_to_camera', 'extrinsic', 'intrinsic']):
+                print(f"Found calibration in {json_file}")
+                return json_file, data
+        except:
+            continue
+
+    return None, None
+
+
 def transform_custom_to_expected(input_path: str, output_path: str) -> Tuple[bool, str]:
     input_path = Path(input_path)
     output_path = Path(output_path)
@@ -182,9 +317,54 @@ def transform_custom_to_expected(input_path: str, output_path: str) -> Tuple[boo
     ri_dir.mkdir(parents=True, exist_ok=True)
     cam_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load calibration and poses
-    calib = json.load(open(input_path / "calibration.json"))
-    poses = json.load(open(input_path / "ego_poses/poses.json"))["frames"]
+    # Find and load calibration
+    calib_path, calib = find_calibration_file(input_path)
+    if not calib:
+        return False, "Could not find calibration file. Expected calibration.json with ego_to_lidar transform."
+
+    print(f"Using calibration from: {calib_path}")
+
+    # Find and load poses
+    poses_path, poses = find_poses_file(input_path)
+    if not poses:
+        return False, "Could not find poses file. Expected ego_poses/poses.json or poses.json with frames array."
+
+    print(f"Using poses from: {poses_path}, found {len(poses)} frames")
+
+    # Normalize pose data to standard format
+    def get_pose_field(pose: dict, field_names: list, default=None):
+        """Get field from pose dict, trying multiple possible names."""
+        for name in field_names:
+            if name in pose:
+                return pose[name]
+        return default
+
+    def normalize_pose(pose: dict, idx: int) -> dict:
+        """Normalize pose to standard format with timestamp, rotation, position."""
+        # Try different field names for timestamp
+        ts = get_pose_field(pose, ['timestamp', 'time', 'ts', 't'])
+        if ts is None:
+            ts = idx  # Use index as fallback
+
+        # Try different field names for position/translation
+        pos = get_pose_field(pose, ['position', 'translation', 'trans', 'xyz', 'location'])
+        if pos is None and 'transform' in pose:
+            # Extract from transform matrix
+            pos = [0, 0, 0]
+
+        # Try different field names for rotation
+        rot = get_pose_field(pose, ['rotation', 'quaternion', 'quat', 'orientation'])
+        if rot is None and 'transform' in pose:
+            rot = [1, 0, 0, 0]  # Identity quaternion
+
+        return {
+            'timestamp': ts,
+            'position': pos if pos else [0, 0, 0],
+            'rotation': rot if rot else [1, 0, 0, 0]
+        }
+
+    # Normalize all poses
+    normalized_poses = [normalize_pose(p, i) for i, p in enumerate(poses)]
 
     # LiDAR calibration
     lidar_sensor_calib = invert_transform(
@@ -227,7 +407,12 @@ def transform_custom_to_expected(input_path: str, output_path: str) -> Tuple[boo
 
     # Process frames
     for idx, lidar in enumerate(lidar_files):
-        ts_us = int(float(poses[idx]["timestamp"]) * 1_000_000)
+        if idx >= len(normalized_poses):
+            print(f"Warning: More lidar files ({len(lidar_files)}) than poses ({len(normalized_poses)})")
+            break
+
+        pose = normalized_poses[idx]
+        ts_us = int(float(pose["timestamp"]) * 1_000_000)
 
         shutil.copy2(lidar, pc_dir / f"lidar__{ts_us}.pcd")
 
@@ -237,14 +422,14 @@ def transform_custom_to_expected(input_path: str, output_path: str) -> Tuple[boo
         frame_calib = {
             "LIDAR_TOP": {
                 "sensor_calibration": lidar_sensor_calib,
-            "ego_pose": {
-                "rotation": poses[idx]["rotation"],
-                "translation": poses[idx]["position"]
-            }
+                "ego_pose": {
+                    "rotation": pose["rotation"],
+                    "translation": pose["position"]
+                }
             },
             "ego_pose": {
-                "rotation": poses[idx]["rotation"],
-                "translation": poses[idx]["position"]
+                "rotation": pose["rotation"],
+                "translation": pose["position"]
             }}
 
         # Inject camera calibrations (matched names)

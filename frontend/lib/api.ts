@@ -182,7 +182,7 @@ export const api = {
     upload: async (file: File, onProgress?: (progress: number) => void) => {
       const formData = new FormData();
       formData.append('file', file);
-      
+
       const response = await axiosInstance.post('/utils/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -198,7 +198,7 @@ export const api = {
     },
     uploadMultiple: async (files: FileList | File[], onProgress?: (progress: number) => void) => {
       const formData = new FormData();
-      
+
       // Append all files - for folder uploads, the webkitRelativePath contains the folder structure
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -206,7 +206,7 @@ export const api = {
         const relativePath = (file as any).webkitRelativePath || file.name;
         formData.append('files', file, relativePath);
       }
-      
+
       const response = await axiosInstance.post('/utils/upload-multiple', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -224,10 +224,98 @@ export const api = {
       if (onProgress) {
         onProgress(100);
       }
-      return response.data; // { gcs_path: string, file_count: number, files: [...] }
+      return response.data; // { gcs_path: string, file_count: number, files: [...], validation: {...} }
+    },
+    getDataStructureGuide: async (pipelineType: string = '2d') => {
+      const response = await axiosInstance.get(`/utils/data-structure-guide?pipeline_type=${pipelineType}`);
+      return response.data;
+    },
+    validateUpload: async (file: File, pipelineType?: string) => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const url = pipelineType
+        ? `/utils/validate-upload?pipeline_type=${pipelineType}`
+        : '/utils/validate-upload';
+
+      const response = await axiosInstance.post(url, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    },
+    validateGcsData: async (gcsPath: string, pipelineType: string = '3d') => {
+      const response = await axiosInstance.post(
+        `/utils/validate-gcs-data?gcs_path=${encodeURIComponent(gcsPath)}&pipeline_type=${pipelineType}`
+      );
+      return response.data;
+    },
+    uploadAdditional: async (
+      file: File,
+      baseGcsPath: string,
+      targetPath: string,
+      onProgress?: (progress: number) => void
+    ) => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await axiosInstance.post(
+        `/utils/upload-additional?base_gcs_path=${encodeURIComponent(baseGcsPath)}&target_path=${encodeURIComponent(targetPath)}`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          onUploadProgress: (progressEvent) => {
+            if (onProgress && progressEvent.total) {
+              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              onProgress(percentCompleted);
+            }
+          }
+        }
+      );
+      return response.data;
     }
   }
 };
+
+// Types for validation responses
+export interface DataValidationResponse {
+  is_valid: boolean;
+  format_detected: string;
+  pipeline_type: string;
+  errors: string[];
+  warnings: string[];
+  suggestions: string[];
+  file_counts: Record<string, number>;
+  structure_help?: {
+    pipeline: string;
+    formats: Record<string, {
+      structure: string[];
+      description: string;
+    }>;
+    supported_formats?: string[];
+  };
+}
+
+export interface MissingFile {
+  file_type: string;
+  expected_names: string[];
+  description: string;
+  required: boolean;
+}
+
+export interface UploadValidation {
+  detected_type: string;
+  is_valid_structure: boolean;
+  warnings: string[];
+  suggestions: string[];
+  file_counts: Record<string, number>;
+  missing_files?: MissingFile[];
+  found_candidates?: Record<string, string[]>;
+  needs_user_input?: boolean;
+}
 
 
 

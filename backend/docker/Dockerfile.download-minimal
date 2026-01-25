@@ -1,0 +1,11 @@
+# Ultra-minimal image using official Google Cloud SDK base
+# ~500MB (cloud-sdk:slim includes gsutil, gcloud, bq)
+
+FROM google/cloud-sdk:slim
+
+# Install unzip for extracting zip files (used in download task)
+RUN apt-get update && apt-get install -y --no-install-recommends unzip && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+CMD ["bash"]

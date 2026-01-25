@@ -19,6 +19,83 @@ from app.utils.lidar_format_transformer import (
 )
 
 
+def analyze_unknown_format(data_path: str) -> str:
+    """
+    Analyze why format detection failed and return helpful error message.
+    """
+    path = Path(data_path)
+    issues = []
+    found = []
+
+    # Check for lidar directory
+    lidar_dir = path / "lidar"
+    pointcloud_dir = path / "pointcloud"
+
+    if lidar_dir.is_dir():
+        pcd_count = len(list(lidar_dir.glob("*.pcd")))
+        bin_count = len(list(lidar_dir.glob("*.bin")))
+        found.append(f"lidar/ directory ({pcd_count} .pcd, {bin_count} .bin files)")
+    elif pointcloud_dir.is_dir():
+        pcd_count = len(list(pointcloud_dir.glob("*.pcd")))
+        found.append(f"pointcloud/ directory ({pcd_count} .pcd files)")
+    else:
+        issues.append("Missing 'lidar/' or 'pointcloud/' directory with point cloud files (.pcd or .bin)")
+
+    # Check for calibration
+    calib_file = path / "calibration.json"
+    calib_alt = path / "calib.json"
+    if calib_file.exists():
+        found.append("calibration.json")
+    elif calib_alt.exists():
+        found.append("calib.json")
+    else:
+        # Search for any calibration-like file
+        calib_candidates = list(path.glob("*calib*.json"))
+        if calib_candidates:
+            issues.append(f"Missing 'calibration.json'. Found similar: {[f.name for f in calib_candidates]}")
+        else:
+            issues.append("Missing 'calibration.json' with sensor calibration data")
+
+    # Check for poses
+    poses_locations = [
+        path / "ego_poses" / "poses.json",
+        path / "poses.json",
+        path / "ego_poses.json",
+    ]
+
+    poses_found = False
+    for loc in poses_locations:
+        if loc.exists():
+            found.append(str(loc.relative_to(path)))
+            poses_found = True
+            break
+
+    if not poses_found:
+        ego_poses_dir = path / "ego_poses"
+        if ego_poses_dir.is_dir():
+            contents = list(ego_poses_dir.iterdir())
+            if contents:
+                issues.append(f"Missing 'ego_poses/poses.json'. Found in ego_poses/: {[f.name for f in contents[:5]]}")
+            else:
+                issues.append("ego_poses/ directory is empty - needs poses.json with vehicle pose data")
+        else:
+            issues.append("Missing 'ego_poses/poses.json' with vehicle pose data (position/rotation per frame)")
+
+    # Build message
+    msg_parts = []
+    if found:
+        msg_parts.append(f"Found: {', '.join(found)}.")
+    if issues:
+        msg_parts.append("Missing: " + "; ".join(issues))
+
+    # Add expected format hint
+    msg_parts.append(
+        "Expected structure: lidar/ (with .pcd files), calibration.json, ego_poses/poses.json"
+    )
+
+    return " ".join(msg_parts)
+
+
 def download_from_gcs(gcs_path: str, local_path: str) -> bool:
     """
     Download data from GCS to local path.
@@ -130,41 +207,64 @@ def upload_to_gcs(local_path: str, gcs_bucket: str, gcs_prefix: str) -> Optional
         return None
 
 
-def find_data_directory(root_path: Path) -> Optional[Path]:
+def find_data_directory(root_path: Path, max_depth: int = 5) -> Optional[Path]:
     """
     Recursively search for the actual data directory.
-    Looks for directories containing 'lidar', 'pointcloud', or 'data' subdirectories.
+    Looks for directories containing 'lidar', 'pointcloud', or expected data files.
 
     Args:
         root_path: Root path to search from
+        max_depth: Maximum depth to search
 
     Returns:
         Path to data directory or None
     """
-    # Check if current directory has expected subdirectories
-    subdirs = [d.name for d in root_path.iterdir() if d.is_dir()]
+    from collections import deque
 
-    # Check for expected format indicators
-    if 'pointcloud' in subdirs or 'lidar' in subdirs:
-        return root_path
+    queue = deque([(root_path, 0)])
 
-    # Check if there's a single subdirectory - recurse into it
-    dirs = [d for d in root_path.iterdir() if d.is_dir()]
-    if len(dirs) == 1:
-        # Recursively check subdirectory
-        result = find_data_directory(dirs[0])
-        if result:
-            return result
+    while queue:
+        current, depth = queue.popleft()
 
-    # Check all subdirectories for data indicators
-    for subdir in dirs:
-        if subdir.name.lower() in ['data', 'lidar', 'pointcloud']:
-            return subdir
-        # Recurse one level deeper
-        nested_result = find_data_directory(subdir)
-        if nested_result:
-            return nested_result
+        if depth > max_depth:
+            continue
 
+        try:
+            subdirs = [d.name.lower() for d in current.iterdir() if d.is_dir()]
+            files = [f.name.lower() for f in current.iterdir() if f.is_file()]
+        except PermissionError:
+            continue
+
+        print(f"[find_data_directory] Checking {current} (depth={depth})")
+        print(f"  Subdirs: {subdirs[:5]}, Files: {files[:5]}")
+
+        # Check for CaliperGT format (expected)
+        if 'pointcloud' in subdirs and 'related_images' in subdirs:
+            print(f"[find_data_directory] Found CaliperGT format at {current}")
+            return current
+
+        # Check for custom format
+        if 'lidar' in subdirs:
+            # Check if calibration and poses exist
+            has_calibration = 'calibration.json' in files
+            has_poses = (
+                'poses.json' in files or
+                'ego_poses.json' in files or
+                'ego_poses' in subdirs
+            )
+            if has_calibration or has_poses:
+                print(f"[find_data_directory] Found custom format at {current}")
+                return current
+            # Even just lidar folder is a candidate
+            print(f"[find_data_directory] Found lidar folder at {current}")
+            return current
+
+        # Add subdirectories to queue
+        for subdir in current.iterdir():
+            if subdir.is_dir():
+                queue.append((subdir, depth + 1))
+
+    print(f"[find_data_directory] No data directory found")
     return None
 
 
@@ -256,15 +356,29 @@ def preprocess_3d_data(
 
         # Detect format
         format_type, data_root = detect_format(data_dir)
-        print(f"Detected format: {format_type}")
-        if format_type == 'unkown':
+        print(f"Detected format: {format_type}, data_root: {data_root}")
+
+        # Debug: List what's in the directory
+        try:
+            import os
+            contents = os.listdir(data_dir)
+            print(f"Directory contents at {data_dir}: {contents}")
+        except Exception as e:
+            print(f"Could not list directory: {e}")
+
+        if format_type == 'unknown':
             print(f"Check removing redundant folders: {data_root}")
             # Normalize structure (remove redundant folders)
-            normalized_root = normalize_dataset_root(data_dir, data_root)
+            if data_root:
+                normalized_root = normalize_dataset_root(data_dir, data_root)
+            else:
+                normalized_root = data_dir
             print(f"Normalized root: {normalized_root}")
             # Re-detect (now guaranteed flat)
-            format_type, data_dir = detect_format(normalized_root)
-            print(f"format after removing redundant folders: {format_type}")
+            format_type, data_root = detect_format(normalized_root)
+            print(f"Format after removing redundant folders: {format_type}")
+            if format_type != 'unknown':
+                data_dir = data_root if data_root else normalized_root
         if format_type == 'expected':
             # Already in correct format, but if we extracted from zip, we need to upload
             if was_extracted:
@@ -334,8 +448,11 @@ def preprocess_3d_data(
             return output_gcs_path, True, f"Successfully transformed and uploaded data. {message}"
 
         else:
-            # Unknown format - use as-is and hope for the best
-            return input_gcs_path, False, "Unknown format - attempting to use as-is"
+            # Unknown format - FAIL with detailed error message
+            error_details = analyze_unknown_format(data_dir)
+            error_msg = f"Invalid data format. {error_details}"
+            print(f"ERROR: {error_msg}")
+            raise ValueError(error_msg)
 
     except Exception as e:
         print(f"Error in preprocess_3d_data: {e}")
