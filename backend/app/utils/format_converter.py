@@ -4,6 +4,7 @@ Converts between CaliperGT, COCO, and KITTI 3D formats.
 """
 import io
 import json
+import math
 import zipfile
 from collections import defaultdict
 from typing import Dict, List, Any, Tuple
@@ -176,10 +177,11 @@ def get_pipeline_type(pipeline_id: str) -> str:
 
 def calipergt_to_kitti3d(calipergt_data: Dict[str, Any]) -> bytes:
     """
-    Convert CaliperGT 3D annotations to standard KITTI 3D label format.
+    Convert CaliperGT 3D annotations to KITTI 3D tracking format.
 
     CaliperGT 3D format has:
     - tracks: list of track objects, each with:
+      - id: track identifier
       - frame: starting frame number
       - label: class name (e.g., "pedestrian")
       - shapes: list of cuboid shapes with:
@@ -188,8 +190,8 @@ def calipergt_to_kitti3d(calipergt_data: Dict[str, Any]) -> bytes:
         - points: [x, y, z, rx, ry, rz, width, length, height, ...]
         - outside: boolean (if true, track ends/not visible)
 
-    Standard KITTI 3D label format (per line in .txt file):
-    <class> <truncated> <occluded> <alpha> <left> <top> <right> <bottom> <height> <width> <length> <x> <y> <z> <rotation_y>
+    KITTI 3D tracking format (per line in .txt file):
+    <frame> <track_id> <class> <truncated> <occluded> <alpha> <left> <top> <right> <bottom> <height> <width> <length> <x> <y> <z> <rotation_y>
 
     For LiDAR-only data (no camera):
     - truncated: -1 (unknown)
@@ -206,6 +208,7 @@ def calipergt_to_kitti3d(calipergt_data: Dict[str, Any]) -> bytes:
     tracks = calipergt_data.get("tracks", [])
 
     for track in tracks:
+        track_id = track.get("id", -1)
         label = track.get("label", "unknown")
         # Capitalize first letter for KITTI format
         label = label.capitalize()
@@ -244,11 +247,12 @@ def calipergt_to_kitti3d(calipergt_data: Dict[str, Any]) -> bytes:
             left, top, right, bottom = -1, -1, -1, -1
 
             # rotation_y in KITTI is the rotation around Y-axis (yaw)
-            rotation_y = rz
+            # Add pi/2 to convert from ego frame (along +X) to output frame (along +Y)
+            rotation_y = rz + math.pi / 2
 
-            # Format KITTI label line
-            # KITTI format: class truncated occluded alpha bbox(4) dimensions(3) location(3) rotation_y
-            kitti_line = f"{label} {truncated} {occluded} {alpha:.2f} {left} {top} {right} {bottom} {height:.2f} {width:.2f} {length:.2f} {x:.2f} {y:.2f} {z:.2f} {rotation_y:.2f}"
+            # Format KITTI tracking label line
+            # KITTI tracking format: frame track_id class truncated occluded alpha bbox(4) dimensions(3) location(3) rotation_y
+            kitti_line = f"{frame_num} {track_id} {label} {truncated} {occluded} {alpha:.2f} {left} {top} {right} {bottom} {height:.2f} {width:.2f} {length:.2f} {x:.2f} {y:.2f} {z:.2f} {rotation_y:.2f}"
 
             frames_annotations[frame_num].append(kitti_line)
 
@@ -266,3 +270,40 @@ def calipergt_to_kitti3d(calipergt_data: Dict[str, Any]) -> bytes:
 
     zip_buffer.seek(0)
     return zip_buffer.read()
+
+
+def transform_lidar_orientation(calipergt_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Transform CaliperGT 3D annotations to add pi/2 to orientation.
+
+    Converts boxes from ego frame orientation (along +X) to output frame (along +Y).
+
+    Args:
+        calipergt_data: CaliperGT format annotations with tracks containing cuboid shapes
+
+    Returns:
+        Modified copy of calipergt_data with orientations adjusted by pi/2
+    """
+    import copy
+
+    # Deep copy to avoid modifying original data
+    result = copy.deepcopy(calipergt_data)
+
+    tracks = result.get("tracks", [])
+
+    for track in tracks:
+        shapes = track.get("shapes", [])
+
+        for shape in shapes:
+            if shape.get("type") != "cuboid":
+                continue
+
+            points = shape.get("points", [])
+
+            if len(points) >= 6:
+                # points format: [x, y, z, rx, ry, rz, width, length, height, ...]
+                # rz (yaw) is at index 5
+                # Add pi/2 to convert from ego frame (along +X) to output frame (along +Y)
+                points[5] = points[5] + math.pi / 2
+
+    return result

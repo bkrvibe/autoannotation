@@ -8,7 +8,7 @@ from app.schemas.job import Job, JobCreate
 from app.models.job import Job as JobModel
 from app.models.tenant import Tenant
 from app.services.airflow import get_airflow_service_for_tenant
-from app.utils.format_converter import calipergt_to_coco, calipergt_to_kitti3d
+from app.utils.format_converter import calipergt_to_coco, calipergt_to_kitti3d, transform_lidar_orientation
 from app.utils.lidar_preprocessing import preprocess_3d_data
 import subprocess
 import tempfile
@@ -404,13 +404,16 @@ def download_result_file(
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = f"annotations_3d_{job.id}_{timestamp}.json"
 
-        content = json.dumps(annotations, indent=2).encode('utf-8')
+        # Transform orientation: add pi/2 to convert from ego frame (+X) to output frame (+Y)
+        # Applied for default JSON format here; KITTI format handles it internally
+        transformed_annotations = transform_lidar_orientation(annotations)
+        content = json.dumps(transformed_annotations, indent=2).encode('utf-8')
         media_type = "application/json"
 
         # Convert format if requested
         if format == "coco":
             try:
-                coco_data = calipergt_to_coco(annotations)
+                coco_data = calipergt_to_coco(transformed_annotations)
                 content = json.dumps(coco_data, indent=2).encode('utf-8')
                 filename = filename.replace('.json', '_coco.json')
             except Exception as e:
@@ -418,6 +421,7 @@ def download_result_file(
                 raise HTTPException(status_code=500, detail=f"Failed to convert to COCO format: {str(e)}")
         elif format == "kitti3d":
             try:
+                # Use original annotations - calipergt_to_kitti3d handles the pi/2 offset internally
                 kitti_zip_bytes = calipergt_to_kitti3d(annotations)
                 content = kitti_zip_bytes
                 filename = f"annotations_3d_{job.id}_{timestamp}_kitti.zip"
