@@ -21,6 +21,8 @@ router = APIRouter()
 AIRFLOW_SSH_HOST = "caliper-autoanno-ubuntu224"
 AIRFLOW_SSH_USER = "administrator"
 AIRFLOW_SSH_ZONE = "us-central1-b"
+# Service account for gcloud IAP tunnel authentication
+GCP_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "/home/administrator/autoannotation/KEY_FILE")
 
 
 def validate_gcs_path_for_tenant(gcs_path: str, tenant: Tenant) -> bool:
@@ -450,14 +452,24 @@ def download_result_file(
 
             print(f"Downloading {remote_path} from {AIRFLOW_SSH_HOST}...")
 
-            # Use gcloud compute scp with explicit account
+            # Ensure service account is activated for IAP tunnel
+            if os.path.exists(GCP_SERVICE_ACCOUNT_FILE):
+                subprocess.run(
+                    ["gcloud", "auth", "activate-service-account", f"--key-file={GCP_SERVICE_ACCOUNT_FILE}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+
+            # Use gcloud compute scp with IAP tunnel and explicit account
             result = subprocess.run(
                 [
                     "gcloud", "compute", "scp",
                     f"--zone={AIRFLOW_SSH_ZONE}",
                     f"{AIRFLOW_SSH_USER}@{AIRFLOW_SSH_HOST}:{remote_path}",
                     local_path,
-                    "--tunnel-through-iap"
+                    "--tunnel-through-iap",
+                    "--account=993632776586-compute@developer.gserviceaccount.com"
                 ],
                 capture_output=True,
                 text=True,

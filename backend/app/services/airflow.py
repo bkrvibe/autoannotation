@@ -21,6 +21,46 @@ class DAGRunState(Enum):
     UNKNOWN = "unknown"
 
 
+def get_secret_from_manager(secret_id: str) -> Optional[str]:
+    """
+    Retrieve a secret from GCP Secret Manager.
+    """
+    try:
+        from google.cloud import secretmanager
+
+        project_id = settings.GCP_PROJECT_ID
+        if not project_id:
+            logger.warning("GCP_PROJECT_ID not configured")
+            return None
+
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{project_id}/secrets/{secret_id}/versions/latest"
+
+        response = client.access_secret_version(request={"name": name})
+        return response.payload.data.decode("UTF-8")
+
+    except ImportError:
+        logger.warning("google-cloud-secret-manager not installed")
+        return None
+    except Exception as e:
+        logger.error(f"Error retrieving secret {secret_id}: {e}")
+        return None
+
+
+def get_default_airflow_token() -> Optional[str]:
+    """
+    Get the default Airflow token, preferring Secret Manager over env variable.
+    """
+    # First try Secret Manager
+    if settings.AIRFLOW_TOKEN_SECRET_ID:
+        token = get_secret_from_manager(settings.AIRFLOW_TOKEN_SECRET_ID)
+        if token:
+            return token
+
+    # Fall back to env variable (deprecated)
+    return settings.AIRFLOW_TOKEN
+
+
 def get_tenant_airflow_token(tenant: "Tenant") -> Optional[str]:
     """
     Retrieve Airflow token for a tenant from GCP Secret Manager.
@@ -28,27 +68,8 @@ def get_tenant_airflow_token(tenant: "Tenant") -> Optional[str]:
     """
     if not tenant.airflow_token_secret_id:
         return None
-    
-    try:
-        from google.cloud import secretmanager
-        
-        project_id = settings.GCP_PROJECT_ID
-        if not project_id:
-            logger.warning("GCP_PROJECT_ID not configured")
-            return None
-        
-        client = secretmanager.SecretManagerServiceClient()
-        name = f"projects/{project_id}/secrets/{tenant.airflow_token_secret_id}/versions/latest"
-        
-        response = client.access_secret_version(request={"name": name})
-        return response.payload.data.decode("UTF-8")
-        
-    except ImportError:
-        logger.warning("google-cloud-secret-manager not installed")
-        return None
-    except Exception as e:
-        logger.error(f"Error retrieving tenant Airflow token: {e}")
-        return None
+
+    return get_secret_from_manager(tenant.airflow_token_secret_id)
 
 
 def get_airflow_service_for_tenant(tenant: "Tenant") -> "AirflowService":
@@ -71,12 +92,12 @@ class AirflowService:
     def __init__(self, token: Optional[str] = None):
         """
         Initialize the Airflow service.
-        
+
         Args:
-            token: Optional Airflow API token. If not provided, uses default from settings.
+            token: Optional Airflow API token. If not provided, fetches from Secret Manager.
         """
         self.base_url = settings.AIRFLOW_BASE_URL.rstrip("/")
-        self.token = token or settings.AIRFLOW_TOKEN
+        self.token = token or get_default_airflow_token()
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json"

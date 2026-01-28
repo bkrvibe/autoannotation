@@ -8,7 +8,9 @@ module.exports = {
       interpreter: 'none',
       env: {
         PATH: '/home/administrator/autoannotation/.venv/bin:' + process.env.PATH,
-        GOOGLE_APPLICATION_CREDENTIALS: '/home/administrator/caliper-gt/keys/regal-hybrid-445815-n1-c8d2273aeac7.json'
+        GOOGLE_APPLICATION_CREDENTIALS: '/home/administrator/autoannotation/KEY_FILE',
+        GCP_PROJECT_ID: 'regal-hybrid-445815-n1',
+        AIRFLOW_TOKEN_SECRET_ID: 'airflow-default-token'
       }
     },
     {

@@ -43,7 +43,8 @@ class Settings(BaseSettings):
 
     # Airflow
     AIRFLOW_BASE_URL: str = "https://airflow.caliperai.ai"
-    AIRFLOW_TOKEN: Optional[str] = None  # Fallback token for tenants without dedicated token
+    AIRFLOW_TOKEN: Optional[str] = None  # Fallback token (deprecated - use Secret Manager)
+    AIRFLOW_TOKEN_SECRET_ID: Optional[str] = None  # Secret Manager ID for default Airflow token
     
     # Cloud Storage
     GCS_BUCKET: str = "data-sets-caliperai"
