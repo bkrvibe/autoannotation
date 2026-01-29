@@ -96,10 +96,13 @@ def create_job(
 
                 if was_transformed:
                     print(f"Data transformed: {message}")
+                    print(f"  Original URI: {job_in.input_uri}")
+                    print(f"  Transformed URI: {transformed_uri}")
                     actual_input_uri = transformed_uri
                     preprocessing_message = message
                 else:
-                    print(f"Data preprocessing result: {message}")
+                    print(f"Data preprocessing result (not transformed): {message}")
+                    print(f"  Using original URI: {job_in.input_uri}")
             except ValueError as ve:
                 # Data format validation error - return clear message to user
                 error_msg = str(ve)
@@ -138,6 +141,9 @@ def create_job(
 
         # Determine strict GCS/GCP path key logic based on pipeline tags or ID if needed
         use_gcp_path = False  # Most new DAGs use gcs_path
+
+        print(f"Triggering Airflow DAG: {dag_id}")
+        print(f"  gcs_path being sent: {actual_input_uri}")
 
         run_info = airflow_service.trigger_dag(
             dag_id=dag_id,

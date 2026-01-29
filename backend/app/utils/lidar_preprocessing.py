@@ -436,6 +436,10 @@ def preprocess_3d_data(
             output_prefix = f"tenants/{tenant_id}/transformed/lidar_{timestamp}{job_suffix}"
 
             print(f"Uploading transformed data to GCS...")
+            print(f"  Source: {temp_transform_dir}")
+            print(f"  Bucket: {bucket_name}")
+            print(f"  Prefix: {output_prefix}")
+
             output_gcs_path = upload_to_gcs(
                 temp_transform_dir,
                 bucket_name,
@@ -443,8 +447,10 @@ def preprocess_3d_data(
             )
 
             if not output_gcs_path:
+                print(f"ERROR: upload_to_gcs returned None!")
                 return input_gcs_path, False, "Failed to upload transformed data to GCS"
 
+            print(f"Upload successful! Transformed path: {output_gcs_path}")
             return output_gcs_path, True, f"Successfully transformed and uploaded data. {message}"
 
         else:
