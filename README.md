@@ -2,6 +2,13 @@
 
 This guide covers how to start the application, manage users, and reset passwords.
 
+## Environment Setup
+
+For backend environment variables and a safe template to share with other users, see:
+
+- `backend/.env.example`
+- `backend/README_ENV.md`
+
 ## Starting the Application
 
 ### Prerequisites

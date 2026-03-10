@@ -9,6 +9,13 @@ from app.db.session import engine
 # Create tables
 Base.metadata.create_all(bind=engine)
 
+# Configure Starlette's form parser to allow more files
+# Default limit is 1000 fields, which causes "Too many files" error for large folder uploads
+# Increase to 50000 to support large datasets
+import starlette.formparsers
+starlette.formparsers.FormParser.max_fields = 50000
+starlette.formparsers.MultiPartParser.max_fields = 50000
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",

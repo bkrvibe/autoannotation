@@ -207,8 +207,9 @@ def calipergt_to_kitti3d(calipergt_data: Dict[str, Any]) -> bytes:
 
     tracks = calipergt_data.get("tracks", [])
 
-    for track in tracks:
-        track_id = track.get("id", -1)
+    for track_idx, track in enumerate(tracks):
+        # Use track index as track_id since CaliperGT format doesn't include track IDs
+        track_id = track_idx
         label = track.get("label", "unknown")
         # Capitalize first letter for KITTI format
         label = label.capitalize()
